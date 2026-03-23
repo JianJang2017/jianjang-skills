@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/yourusername/enterprise-dev-flow)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/JianJang2017/jianjang-skills/tree/master/enterprise-dev-flow)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-%3E%3D1.0.0-orange.svg)](https://claude.ai/code)
 [![Tech Stack](https://img.shields.io/badge/Spring%20Cloud%20Alibaba-✓-brightgreen.svg)](https://spring.io/projects/spring-cloud-alibaba)
@@ -331,10 +331,10 @@ graph TD
 
 ```bash
 # Clone or download this project
-git clone https://github.com/yourusername/enterprise-dev-flow.git
+git clone https://github.com/JianJang2017/jianjang-skills.git
 
 # Create symbolic link
-ln -s $(pwd)/enterprise-dev-flow ~/.claude/skills/enterprise-dev-flow
+ln -s $(pwd)/jianjang-skills/enterprise-dev-flow ~/.claude/skills/enterprise-dev-flow
 ```
 
 **Method 2: Direct Copy**
@@ -575,8 +575,8 @@ Thanks to all contributors who have helped this project!
 
 ## 📮 Contact
 
-- Submit Issues: [GitHub Issues](https://github.com/yourusername/enterprise-dev-flow/issues)
-- Email: your-email@example.com
+- Submit Issues: [GitHub Issues](https://github.com/JianJang2017/jianjang-skills/issues)
+- Email: jianjang2017@gmail.com
 
 ---
 
