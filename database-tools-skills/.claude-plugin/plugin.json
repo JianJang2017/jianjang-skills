@@ -1,0 +1,9 @@
+{
+  "name": "database-tools-skills",
+  "description": "PostgreSQL / MySQL 数据库工具集：查看结构、导出 DDL、性能分析、数据字典、结构对比",
+  "version": "1.1.0",
+  "author": {
+    "name": "chatdr"
+  },
+  "keywords": ["database", "postgresql", "mysql", "ddl", "schema", "data-dictionary"]
+}
