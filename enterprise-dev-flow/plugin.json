@@ -1,0 +1,100 @@
+{
+  "name": "enterprise-dev-flow",
+  "version": "2.2.0",
+  "description": "企业级产品应用开发全流程技能包，覆盖从需求书写到研发设计、任务拆分、测试用例到测试报告的完整闭环。适用于 Spring Cloud Alibaba 技术栈项目。",
+  "author": "Enterprise Dev Team",
+  "skills": [
+    {
+      "name": "prd-writer",
+      "path": "skills/prd-writer",
+      "description": "企业级产品需求文档（PRD）撰写技能。引导产品经理按照企业级规范输出高质量PRD，覆盖业务架构、功能详述、非功能需求、验收标准的完整闭环。"
+    },
+    {
+      "name": "design-writer",
+      "path": "skills/design-writer",
+      "description": "研发详细设计文档撰写技能（Spring Cloud Alibaba技术栈）。引导后端研发人员将PRD需求转化为可落地的技术设计方案，覆盖架构图、数据库、缓存、消息队列、接口、核心逻辑设计的完整闭环。"
+    },
+    {
+      "name": "task-planner",
+      "path": "skills/task-planner",
+      "description": "研发任务拆分与实施计划生成技能。将PRD或设计文档拆解为两种格式：一是面向项目管理的Epic/Story/Task工作清单（Markdown）；二是面向Claude Code直接执行的实施计划文件（Plan格式）。"
+    },
+    {
+      "name": "test-designer",
+      "path": "skills/test-designer",
+      "description": "测试用例设计技能。引导测试工程师基于PRD需求和企业测试规范，系统性地设计覆盖正常/异常/边界/安全/幂等各维度的高质量测试用例集。"
+    },
+    {
+      "name": "test-reporter",
+      "path": "skills/test-reporter",
+      "description": "测试总结报告撰写技能。引导测试工程师基于测试执行数据，产出符合企业规范的测试总结报告，包含用例执行统计、缺陷分析、准出评估、上线风险评估的完整闭环。"
+    }
+  ],
+  "commands": [
+    {
+      "name": "prd:writing-prd",
+      "path": "commands/prd/writing-prd.md",
+      "description": "产品需求文档（PRD）撰写命令，调用 prd-writer 技能"
+    },
+    {
+      "name": "dev:writing-design",
+      "path": "commands/dev/writing-design.md",
+      "description": "研发详细设计文档撰写命令，调用 design-writer 技能"
+    },
+    {
+      "name": "dev:planning-tasks",
+      "path": "commands/dev/planning-tasks.md",
+      "description": "研发任务拆分与实施计划生成命令，调用 task-planner 技能"
+    },
+    {
+      "name": "test:designing-cases",
+      "path": "commands/test/designing-cases.md",
+      "description": "测试用例设计命令，调用 test-designer 技能"
+    },
+    {
+      "name": "test:writing-report",
+      "path": "commands/test/writing-report.md",
+      "description": "测试总结报告撰写命令，调用 test-reporter 技能"
+    }
+  ],
+  "references": [
+    {
+      "name": "common-rules",
+      "path": "references/common-rules.md",
+      "description": "跨角色通用规范：安全红线、幂等性设计、状态机规范、缺陷等级、验收标准格式、NFR基线、数据字典规范、发布安全规范"
+    },
+    {
+      "name": "prd-template",
+      "path": "references/prd-template.md",
+      "description": "企业级PRD文档模板，包含完整章节结构和填写说明"
+    },
+    {
+      "name": "design-template",
+      "path": "references/design-template.md",
+      "description": "研发详细设计文档模板（Spring Cloud Alibaba技术栈），包含架构图、数据模型、接口设计、核心逻辑设计的完整结构"
+    },
+    {
+      "name": "test-template",
+      "path": "references/test-template.md",
+      "description": "测试用例与测试报告模板，包含用例结构定义、覆盖矩阵、测试总结报告完整结构"
+    },
+    {
+      "name": "api-design-rules",
+      "path": "references/api-design-rules.md",
+      "description": "API 接口设计规范，包含 RESTful 风格、统一响应格式、URL 设计、响应码、参数校验、分页查询、接口安全等完整规范"
+    }
+  ],
+  "tags": [
+    "enterprise",
+    "prd",
+    "design",
+    "testing",
+    "spring-cloud-alibaba",
+    "project-management",
+    "task-planning"
+  ],
+  "compatibility": {
+    "claude-code": ">=1.0.0"
+  },
+  "license": "MIT"
+}
