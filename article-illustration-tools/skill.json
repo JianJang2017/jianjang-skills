@@ -1,0 +1,59 @@
+{
+  "name": "article-illustration-tools",
+  "version": "1.0.0",
+  "description": "Add professional illustrations to technical articles, tutorials, and blog posts. Analyzes content, recommends image count and positions, generates images in various styles (infographic/diagram/hand-drawn), and inserts them into markdown.",
+  "author": "Your Name",
+  "license": "MIT",
+  "main": "SKILL.md",
+  "keywords": [
+    "article",
+    "illustration",
+    "image-generation",
+    "markdown",
+    "codex",
+    "gemini",
+    "配图",
+    "文章插图"
+  ],
+  "dependencies": {
+    "node": ">=14.0.0"
+  },
+  "backends": [
+    {
+      "name": "codex-cli",
+      "description": "Codex CLI with imagegen capability",
+      "required": false,
+      "command": "codex"
+    },
+    {
+      "name": "agy",
+      "description": "Antigravity CLI with generate_image tool",
+      "required": false,
+      "command": "agy"
+    }
+  ],
+  "files": [
+    "SKILL.md",
+    "scripts/generate-image.js",
+    "scripts/README.md",
+    "scripts/test-prompt.md",
+    "scripts/test.sh",
+    "references/description-optimization.md"
+  ],
+  "triggers": {
+    "zh": [
+      "为文章配图",
+      "给文章生成图片",
+      "文章配图",
+      "生成文章插图",
+      "添加文章图片"
+    ],
+    "en": [
+      "illustrate article",
+      "add images to article",
+      "generate article images",
+      "create illustrations",
+      "add visuals"
+    ]
+  }
+}

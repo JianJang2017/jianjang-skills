@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; color: #333; line-height: 1.6; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #0066cc; color: #fff; padding: 16px 24px; border-radius: 6px 6px 0 0; }
+    .body { border: 1px solid #e0e0e0; border-top: none; padding: 24px; border-radius: 0 0 6px 6px; }
+    .footer { color: #999; font-size: 12px; margin-top: 24px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>欢迎加入 {{company}}</h2>
+    </div>
+    <div class="body">
+      <p>尊敬的 {{name}}：</p>
+      <p>欢迎加入 {{company}}！我们很高兴你成为团队的一员。</p>
+      <p>你的工号是 <strong>{{employee_id}}</strong>，入职部门为 <strong>{{department}}</strong>。</p>
+      <p>如有任何问题，欢迎随时联系 HR 团队。</p>
+      <p>祝工作顺利！</p>
+    </div>
+    <div class="footer">
+      此邮件由系统自动发送，请勿直接回复。
+    </div>
+  </div>
+</body>
+</html>

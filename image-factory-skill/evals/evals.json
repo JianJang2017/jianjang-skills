@@ -1,0 +1,23 @@
+{
+  "skill_name": "image-factory-skill",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "生成一张科技感的系统架构图，蓝图风格，包含前端、API网关、数据库三层，发给我自己（用 .env 里配置的接收人就行）",
+      "expected_output": "Skill generates a blueprint-style architecture image, then sends it to the FEISHU_USER_IDS from .env as the configured identity. Reports per-target success.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "给研发群 oc_6f8ae483b7272f413a9ad01e6dbfec78 发一张手绘风格的部署流程图，配文：本周部署流程草图，请大家 review",
+      "expected_output": "Generates a hand-drawn flowchart, sends to the specified chat_id with a follow-up markdown caption. Handles the bot-not-in-group (230002) error gracefully if it occurs.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "把这张已有的图片发给张三和李四，他们的 open_id 是 ou_aaa 和 ou_bbb",
+      "expected_output": "Skips generation (uses provided image), sends the existing image to both users via batch send, continues on individual failure, reports summary.",
+      "files": ["sample-diagram.png"]
+    }
+  ]
+}

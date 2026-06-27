@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <title>{{subject}}</title>
+    <style>
+        /* 基础重置 */
+        body { margin:0; padding:0; width:100% !important; }
+        table { border-collapse:collapse; }
+        img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; }
+
+        /* 正文内容自适应：图片、表格不溢出，长单词/链接自动换行 */
+        .email-body img { max-width:100% !important; height:auto !important; }
+        .email-body table { max-width:100% !important; }
+        .email-body { word-break:break-word; overflow-wrap:break-word; }
+        .email-body a { word-break:break-all; }
+
+        /* 平板/小窗：放宽占比，减小留白 */
+        @media only screen and (max-width:680px) {
+            .container { width:96% !important; }
+        }
+
+        /* 手机端响应式（屏幕宽度 <= 480px） */
+        @media only screen and (max-width:480px) {
+            .container { width:100% !important; border-radius:0 !important; }
+            .gutter { padding-left:20px !important; padding-right:20px !important; }
+            .logo-cell { padding:24px 20px 16px 20px !important; }
+            .logo-img { max-width:150px !important; }
+            .title-text { font-size:17px !important; line-height:25px !important; }
+            .body-text { font-size:15px !important; line-height:25px !important; }
+            .sign-label { width:52px !important; }
+            .footer-cell { padding:14px 20px !important; }
+            .disclaimer { padding-left:20px !important; padding-right:20px !important; }
+        }
+    </style>
+</head>
+<body style="margin:0; padding:0; background-color:#eef1f5; font-family:'Microsoft YaHei', 'PingFang SC', Arial, sans-serif; color:#333333; -webkit-font-smoothing:antialiased;">
+<!-- 预览文字（收件箱列表预览，不在正文显示） -->
+<div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">{{email_title}}</div>
+
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%; background-color:#eef1f5; margin:0; padding:32px 0;">
+    <tr>
+        <td align="center" style="padding:0 12px;">
+            <!-- 主体容器 -->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="container" style="width:92%; max-width:860px; background-color:#ffffff; border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.08);">
+
+                <!-- 顶部品牌条 -->
+                <tr>
+                    <td style="height:5px; background-color:#0066cc; font-size:0; line-height:0;">&nbsp;</td>
+                </tr>
+
+                <!-- Logo 区域 -->
+                <tr>
+                    <td class="logo-cell" style="padding:36px 40px 24px 40px; text-align:center;">
+                        <img src="cid:company_logo" alt="公司Logo" width="180" class="logo-img" style="display:block; margin:0 auto; max-width:180px; height:auto; border:0;">
+                    </td>
+                </tr>
+
+                <!-- 邮件内容区域 -->
+                <tr>
+                    <td class="gutter" style="padding:8px 40px 32px 40px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <!-- 称呼 -->
+                            <tr>
+                                <td style="font-size:16px; line-height:24px; color:#222222; padding-bottom:18px;">
+                                    尊敬的 <strong>{{recipient_name}}</strong>：
+                                </td>
+                            </tr>
+
+                            <!-- 标题（带左侧色条强调） -->
+                            <tr>
+                                <td style="padding-bottom:22px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                        <tr>
+                                            <td width="4" style="width:4px; background-color:#0066cc; border-radius:2px;">&nbsp;</td>
+                                            <td class="title-text" style="padding-left:12px; font-size:19px; line-height:28px; font-weight:bold; color:#0066cc;">
+                                                {{email_title}}
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+
+                            <!-- 正文内容 -->
+                            <tr>
+                                <td class="body-text email-body" style="font-size:15px; line-height:26px; color:#444444; padding-bottom:32px; word-break:break-word; overflow-wrap:break-word;">
+                                    {{content}}
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- 签名卡片 -->
+                <tr>
+                    <td class="gutter" style="padding:0 40px 24px 40px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f6f8fb; border-left:4px solid #0066cc; border-radius:6px;">
+                            <tr>
+                                <td style="padding:16px 24px;">
+                                    <!-- 签名信息（属性标签表格） -->
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size:13px; line-height:18px;">
+                                        <tr>
+                                            <td width="58" class="sign-label" style="width:58px; padding:3px 0; color:#999999; vertical-align:top; white-space:nowrap;">姓&nbsp;&nbsp;&nbsp;&nbsp;名</td>
+                                            <td style="padding:3px 0 3px 14px; color:#222222; border-left:1px solid #e2e8f0; word-break:break-word; overflow-wrap:break-word;">
+                                                <strong>{{sender_name}}</strong>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td width="58" class="sign-label" style="width:58px; padding:3px 0; color:#999999; vertical-align:top; white-space:nowrap;">职&nbsp;&nbsp;&nbsp;&nbsp;位</td>
+                                            <td style="padding:3px 0 3px 14px; color:#555555; border-left:1px solid #e2e8f0; word-break:break-word; overflow-wrap:break-word;">{{sender_title}}</td>
+                                        </tr>
+                                        <tr>
+                                            <td width="58" class="sign-label" style="width:58px; padding:3px 0; color:#999999; vertical-align:top; white-space:nowrap;">部&nbsp;&nbsp;&nbsp;&nbsp;门</td>
+                                            <td style="padding:3px 0 3px 14px; color:#555555; border-left:1px solid #e2e8f0; word-break:break-word; overflow-wrap:break-word;">{{sender_department}}</td>
+                                        </tr>
+                                        <tr>
+                                            <td width="58" class="sign-label" style="width:58px; padding:3px 0; color:#999999; vertical-align:top; white-space:nowrap;">邮&nbsp;&nbsp;&nbsp;&nbsp;箱</td>
+                                            <td style="padding:3px 0 3px 14px; color:#555555; border-left:1px solid #e2e8f0; word-break:break-all;">{{sender_email}}</td>
+                                        </tr>
+                                        <tr>
+                                            <td width="58" class="sign-label" style="width:58px; padding:3px 0; color:#999999; vertical-align:top; white-space:nowrap;">电&nbsp;&nbsp;&nbsp;&nbsp;话</td>
+                                            <td style="padding:3px 0 3px 14px; color:#555555; border-left:1px solid #e2e8f0; word-break:break-word; overflow-wrap:break-word;">{{sender_phone}}</td>
+                                        </tr>
+                                        <tr>
+                                            <td width="58" class="sign-label" style="width:58px; padding:3px 0; color:#999999; vertical-align:top; white-space:nowrap;">地&nbsp;&nbsp;&nbsp;&nbsp;址</td>
+                                            <td style="padding:3px 0 3px 14px; color:#555555; border-left:1px solid #e2e8f0; word-break:break-word; overflow-wrap:break-word;">{{sender_address}}</td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- 底部公司信息 -->
+                <tr>
+                    <td class="footer-cell" style="background-color:#0066cc; padding:14px 40px; text-align:center;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                                <td style="font-size:13px; line-height:19px; color:#ffffff; font-weight:bold; padding-bottom:4px; word-break:break-word; overflow-wrap:break-word;">
+                                    {{company_name}}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="font-size:11px; line-height:16px; color:#cfe0f5; word-break:break-word; overflow-wrap:break-word;">
+                                    {{company_website}} &nbsp;|&nbsp; {{company_address}}
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- 免责声明 -->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="container" style="width:92%; max-width:860px;">
+                <tr>
+                    <td align="center" class="disclaimer" style="padding:14px 16px 0 16px; font-size:11px; line-height:17px; color:#a0a6ad;">
+                        本邮件及其附件含有机密信息，仅限收件人使用。如您误收此邮件，请立即删除并通知发件人。
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

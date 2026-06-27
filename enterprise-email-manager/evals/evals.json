@@ -1,0 +1,36 @@
+{
+  "skill_name": "enterprise-email-manager",
+  "evals": [
+    {
+      "id": 0,
+      "name": "backup-recent-to-eml",
+      "prompt": "帮我把最近 30 天的邮件备份到本地 ./my_backup 目录，存成 eml 文件，附件也要一起存下来。",
+      "expected_output": "邮件以 .eml 格式保存到 ./my_backup 目录，附件保存到 attachments 子目录，输出备份数量统计。",
+      "files": [],
+      "assertions": [
+        "使用技能的 backup_emails.py 脚本而非临时手写代码",
+        "正确解析'最近30天'为时间筛选条件",
+        "邮件以 .eml 格式保存到输出目录",
+        "附件被单独保存",
+        "输出备份数量统计",
+        "未发送或删除任何邮件（只读）"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "preview-delete-newsletter",
+      "prompt": "我邮箱里有一堆 newsletter 和推广邮件太烦了，发件人都带 noreply，帮我清理掉。",
+      "expected_output": "先用 dry-run 预览将要删除的邮件列表并展示给用户，明确说明需要用户确认后才真正删除，不直接执行删除。",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "send-welcome-template-to-self",
+      "prompt": "我想测试一下新员工欢迎邮件的模版效果，先发一封给我自己（zhangsan@example.com）看看，收件人叫王伟，工号 88001，部门是研发中心，公司是示例公司。",
+      "expected_output": "使用 welcome.html 模版，正确替换 name/employee_id/department/company 等变量，发送 HTML 邮件到用户自己的地址，输出发送成功。",
+      "files": [],
+      "assertions": []
+    }
+  ]
+}

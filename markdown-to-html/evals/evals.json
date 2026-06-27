@@ -1,0 +1,52 @@
+{
+  "skill_name": "markdown-to-html",
+  "evals": [
+    {
+      "id": 0,
+      "name": "tech-longform-autopick",
+      "prompt": "帮我把 evals/inputs/context-engineering.md 这篇文章转换成排版精美的 HTML，能直接粘贴到微信公众号编辑器里。",
+      "expected_output": "全内联样式的 HTML，自动选用『原生蓝图』主题（技术长文）。包含正确的页面外壳、标题/导语、章节标题、引用块、代码块（用 &nbsp;/<br> 而非 <pre>）、列表、参考文章组件。无 <style>/class/外部 CSS。",
+      "files": ["evals/inputs/context-engineering.md"],
+      "assertions": [
+        "输出是完整 HTML 文档（含 <!doctype html> 和 <meta charset>）",
+        "自动选用『原生蓝图』主题（#70bcea/#e7f7fc，字体栈含 Optima）",
+        "全内联样式：不含 <style>、不含外部样式表",
+        "不含 class= 选择器",
+        "代码块用 &nbsp;/<br> 渲染而非 <pre>/<code>",
+        "列表渲染为多项 <p>（带 • 前缀），未用 <ul>/<ol>",
+        "引用块、章节标题、参考文章组件均正确套用"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "study-plan-autopick",
+      "prompt": "把 evals/inputs/cpa-study-plan.md 排版成好看的网页，我要发出来给同学看。",
+      "expected_output": "全内联样式的 HTML，自动选用『青格笔记』主题（计划/复盘/笔记）。正确渲染表格（thead/tbody、隔行变色）、引用块、列表、代码块、参考文章。无 <style>/class/外部 CSS。",
+      "files": ["evals/inputs/cpa-study-plan.md"],
+      "assertions": [
+        "输出是完整 HTML 文档（含 <!doctype html> 和 <meta charset>）",
+        "自动选用『青格笔记』主题（网格背景或 #4dd0e1/#26c6da）",
+        "全内联样式：不含 <style>、不含外部样式表",
+        "不含 class= 选择器",
+        "Markdown 表格渲染为 <table>（含 thead/tbody，单元格带内联 style）",
+        "代码块用 &nbsp;/<br> 渲染而非 <pre>/<code>",
+        "引用块、参考文章组件正确套用"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "explicit-theme-override",
+      "prompt": "用『青格笔记』这个主题，把 evals/inputs/context-engineering.md 转成 HTML 排版。",
+      "expected_output": "尊重用户点名的主题，使用『青格笔记』（cyan-grid）而非按内容会自动选的『原生蓝图』。全内联样式，结构完整。",
+      "files": ["evals/inputs/context-engineering.md"],
+      "assertions": [
+        "输出是完整 HTML 文档（含 <!doctype html> 和 <meta charset>）",
+        "尊重用户点名：使用『青格笔记』(#4dd0e1/#26c6da)，而非按内容会自动选的『原生蓝图』(#70bcea)",
+        "全内联样式：不含 <style>、不含外部样式表",
+        "不含 class= 选择器",
+        "代码块用 &nbsp;/<br> 渲染而非 <pre>/<code>",
+        "文章结构完整（标题/导语、章节标题、引用块、列表、参考文章）"
+      ]
+    }
+  ]
+}

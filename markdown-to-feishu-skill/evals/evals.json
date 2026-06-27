@@ -1,0 +1,27 @@
+{
+  "skill_name": "markdown-to-feishu-skill",
+  "notes": "All evals run lark-cli writes in --dry-run (no real spaces/docs are created). Graders check that the agent (1) parses images first, (2) sequences import -> wiki move -> per-image insert, (3) handles missing/remote images explicitly, (4) uses --as user and relative paths.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "auto-create-space-with-images",
+      "prompt": "把 evals/fixtures/with-images/guide.md 这篇带图片的文档传到飞书知识库。我没有现成的知识库，你帮我建一个。注意里面有两张本地图片，别给我弄丢了。所有飞书写操作都先用 --dry-run 预览，不要真的创建。",
+      "expected_output": "Agent 先用 extract_images.py 解析出 2 张本地图片（arch.png, steps.png 均 exists=true），用 H1『微服务部署指南』作为新知识空间名，按 dry-run 演示 wiki +space-create -> drive +import（用剥离图片后的 import.md）-> wiki +move -> 两次 docs +media-insert（带 anchor）。全程 --as user，路径为相对路径。",
+      "files": ["evals/fixtures/with-images/guide.md", "evals/fixtures/with-images/assets/arch.png", "evals/fixtures/with-images/assets/steps.png"]
+    },
+    {
+      "id": 1,
+      "name": "missing-and-remote-images",
+      "prompt": "帮我把 evals/fixtures/missing-images/report.md 导入飞书 wiki。所有飞书命令用 --dry-run 就行，先别真写。",
+      "expected_output": "Agent 解析出 3 张图：trend.png 存在、gone.png 缺失(exists=false)、一张远程 example.com logo。必须显式停下来报告 gone.png 缺失并询问/标注，远程图说明单独处理（下载或外链），不静默丢图。dry-run 演示导入与迁入命令链。",
+      "files": ["evals/fixtures/missing-images/report.md", "evals/fixtures/missing-images/pics/trend.png"]
+    },
+    {
+      "id": 2,
+      "name": "specified-existing-space",
+      "prompt": "把 evals/fixtures/with-images/guide.md 写到我们团队已有的知识库『产品研发中心』里，挂在根目录就行。飞书写操作都用 --dry-run 预览。",
+      "expected_output": "Agent 不新建空间，而是先用 wiki +space-list 按名称『产品研发中心』解析出 space_id（dry-run 或只读列表），再按 import -> wiki +move --target-space-id 链条，并处理 2 张本地图片。--as user。",
+      "files": ["evals/fixtures/with-images/guide.md", "evals/fixtures/with-images/assets/arch.png", "evals/fixtures/with-images/assets/steps.png"]
+    }
+  ]
+}

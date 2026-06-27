@@ -1,0 +1,26 @@
+[
+  {
+    "name": "整理系统告警到监控文件夹",
+    "from_match": "xxx\\.info@aliyun\\.com",
+    "target": "定时任务-系统监控",
+    "all_folders": true
+  },
+  {
+    "name": "整理 HR 绩效邮件",
+    "from_match": "hr_perf@example\\.com",
+    "target": "人力资源-绩效",
+    "all_folders": true
+  },
+  {
+    "name": "整理会议通知",
+    "subject_match": "参会通知|会议变更",
+    "target": "会议-通知",
+    "all_folders": false
+  },
+  {
+    "name": "整理 CI/CD 构建告警",
+    "from_match": "devops_noreply@example\\.com",
+    "target": "开发-CI告警",
+    "all_folders": true
+  }
+]

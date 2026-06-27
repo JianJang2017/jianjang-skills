@@ -1,0 +1,23 @@
+{
+  "skill_name": "article-illustration-tools",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "为这篇文章配图：article-illustration-tools/evals/test-article-1.md，使用信息图风格",
+      "expected_output": "分析微服务架构文章，生成outline.md包含4-6张图片的计划（架构图、组件关系图、设计原则对比图等），为每张图生成详细的prompt文件，使用scripts/generate-image.js生成图片，将图片保存到imgs/目录，并在文章中插入图片引用",
+      "files": ["article-illustration-tools/evals/test-article-1.md"]
+    },
+    {
+      "id": 2,
+      "prompt": "给这个深度学习教程配图：article-illustration-tools/evals/test-article-2.md，用手绘风格",
+      "expected_output": "分析教程结构，识别7个步骤，生成outline.md包含7-8张图片的计划（每个步骤一张图），生成手绘风格的prompt文件，生成图片并保存到imgs/目录，在文章中每个步骤后插入对应图片",
+      "files": ["article-illustration-tools/evals/test-article-2.md"]
+    },
+    {
+      "id": 3,
+      "prompt": "为下面的文章配图，自动推荐数量和风格：\n\n# API设计最佳实践\n\n## 什么是RESTful API\n\nREST是一种架构风格，用于设计网络应用程序的接口。它基于HTTP协议，使用标准的HTTP方法（GET、POST、PUT、DELETE）来操作资源。\n\n一个好的RESTful API应该具有以下特点：\n- 无状态：每个请求都包含完整的信息\n- 可缓存：响应可以被缓存以提高性能\n- 统一接口：使用标准的HTTP方法和状态码\n- 分层系统：客户端不需要知道是否直接连接到服务器\n\n## URL设计原则\n\nURL应该清晰地表达资源的层次结构。使用名词而不是动词，使用复数形式表示集合。\n\n好的例子：\n- GET /users - 获取用户列表\n- GET /users/123 - 获取特定用户\n- POST /users - 创建新用户\n- PUT /users/123 - 更新用户\n- DELETE /users/123 - 删除用户\n\n避免在URL中使用动词，HTTP方法已经表达了操作意图。\n\n## HTTP方法\n\n正确使用HTTP方法对API设计至关重要：\n- GET：获取资源，幂等且安全\n- POST：创建新资源\n- PUT：完整更新资源，幂等\n- PATCH：部分更新资源\n- DELETE：删除资源，幂等\n\n## 状态码\n\n使用适当的HTTP状态码来表示请求结果：\n- 2xx：成功\n  - 200 OK：请求成功\n  - 201 Created：资源创建成功\n  - 204 No Content：成功但无返回内容\n- 4xx：客户端错误\n  - 400 Bad Request：请求参数错误\n  - 401 Unauthorized：未认证\n  - 403 Forbidden：无权限\n  - 404 Not Found：资源不存在\n- 5xx：服务器错误\n  - 500 Internal Server Error：服务器内部错误\n  - 503 Service Unavailable：服务不可用\n\n## 版本控制\n\nAPI需要版本控制以支持演进。常见的方式包括：\n- URL版本：/v1/users\n- 请求头版本：Accept: application/vnd.api+json; version=1\n- 查询参数：/users?version=1\n\n## 总结\n\n设计好的API需要考虑一致性、可预测性和易用性。遵循REST原则，使用标准的HTTP特性，你的API会更容易被理解和使用。",
+      "expected_output": "分析文章内容，自动推荐3-4张图片（RESTful概念图、HTTP方法对比图、状态码分类图、版本控制方案对比），让用户选择风格（推荐diagram或infographic），生成outline和prompts，生成图片并保存",
+      "files": []
+    }
+  ]
+}
