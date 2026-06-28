@@ -209,10 +209,18 @@ async function generateWithCodex(prompt, output, aspectRatio, opts) {
     `Use your image generation capability. After generation, the file should be available ` +
     `under ~/.codex/generated_images/. Do not return placeholder text.`;
 
-  await execCommand('codex', ['exec', '--skip-git-repo-check', fullPrompt], {
-    streamStderr: opts.verbose,
-    timeoutMs: opts.timeoutMs,
-  });
+  // codex exec 偶尔以非零码退出（例如它内部的某个工具步骤报错），但图片其实已经
+  // 写到了 ~/.codex/generated_images/<session>/。所以这里不让非零退出直接失败：
+  // 先记下错误，照常走下面的"找回新生成图"逻辑；找到有效图就算成功，找不到才抛错。
+  let execErr = null;
+  try {
+    await execCommand('codex', ['exec', '--skip-git-repo-check', fullPrompt], {
+      streamStderr: opts.verbose,
+      timeoutMs: opts.timeoutMs,
+    });
+  } catch (e) {
+    execErr = e;
+  }
 
   // Find the new session dir(s) created by this invocation
   const afterSessions = await listCodexSessions();
@@ -238,6 +246,10 @@ async function generateWithCodex(prompt, output, aspectRatio, opts) {
   }
 
   if (!found) {
+    // 既没找回图，codex 又非零退出 → 这才是真失败，把底层错误一并抛出便于排查
+    if (execErr) {
+      throw new Error(`Codex 执行失败且未产出图片: ${execErr.message}`);
+    }
     throw new Error(`Codex returned but no unclaimed image found under ${CODEX_GENERATED_DIR}`);
   }
   CLAIMED_CODEX_SOURCES.add(found.path);
