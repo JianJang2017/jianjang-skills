@@ -1,0 +1,18 @@
+{
+  "name": "image-factory-skill",
+  "version": "1.2.0",
+  "description": "Generate AI images and deliver them to Feishu, or publish them as Xiaohongshu (RedNote) notes or Douyin (抖音) image-text posts.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "setup:browser": "playwright install chromium",
+    "setup:xhs": "playwright install chromium",
+    "setup:douyin": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

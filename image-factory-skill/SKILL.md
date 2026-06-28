@@ -1,7 +1,7 @@
 ---
 name: image-factory-skill
-description: Generate AI images from prompts and send them to Feishu (Lark) users or group chats via lark-cli. Use when user asks to "generate an image and send to Feishu", "create image and push to lark", "生成图片并发送到飞书", "给某某发一张图", or wants to send AI-generated images to specific Feishu recipients or groups.
-version: 1.0.0
+description: Generate AI images from prompts and either send them to Feishu (Lark) users/group chats via lark-cli, OR publish them as Xiaohongshu (RedNote/小红书) image-text notes, OR publish them as Douyin (抖音) image-text posts — both via persistent Playwright browser sessions. Use when user asks to "generate an image and send to Feishu", "create image and push to lark", "生成图片并发送到飞书", "给某某发一张图", "发布到小红书", "发一篇小红书笔记", "publish to xiaohongshu / rednote", "发布到抖音", "发一篇抖音图文", "publish to douyin", or wants to push AI-generated images to Feishu recipients/groups or post them as a Xiaohongshu note or Douyin image-text post.
+version: 1.2.0
 ---
 
 # Image Factory Skill
@@ -188,7 +188,276 @@ Results:
 - Permission errors → suggest `lark-cli auth status` to check scopes
 - `im:message.send_as_user` missing → suggest using `--as bot` instead
 
+## Publish to Xiaohongshu (小红书 / RedNote)
+
+This skill has a second, parallel output channel alongside Feishu: publish a
+generated (or existing) image as a Xiaohongshu **image-text note** via a
+persistent Playwright browser session.
+
+> **Why a browser, not an API:** Xiaohongshu has no public posting API — a note
+> can only be published from a logged-in browser session. Since this environment
+> has no OpenClaw/claw tools, the `publish_xiaohongshu.js` script implements the
+> **image-text publish flow** on a self-contained Playwright Chromium.
+
+### When to Use
+
+- User asks to "发布到小红书", "发一篇小红书笔记", "publish to xiaohongshu / rednote"
+- User has an image (just generated, or pre-existing) plus a title/body to post
+
+### Scope (intentional boundary)
+
+This channel handles **image + title/body/topics**. It does NOT reply to
+comments or do account analysis — that's the broader xiaohongshu-ops territory
+and out of scope here. You can pass the copy explicitly (`--title`/`--content`),
+or let the script **auto-derive it from the generation prompt** (`--prompt-file`):
+title from the image's visual style, body from a condensed prompt. Explicit
+values always win over auto-derivation.
+
+### Auto-derive title & body from the prompt
+
+When you publish a freshly generated image, you usually already have its prompt
+(archived under `prompts/YYYYMMDD-NN.md`). Pass it with `--prompt-file` and the
+script fills in whatever copy you didn't give explicitly:
+
+- **Title** ← the image's **visual style** + subject, e.g. a prompt containing
+  "手绘风格的三层 Web 架构图" → title `手绘风的三层 Web 架构图` (capped at 20 chars).
+  Style is matched from a keyword table (手绘/水彩/科技感/治愈/赛博朋克/3D…).
+- **Body** ← a **condensed, de-prompted** version: instruction phrasing
+  ("画一张…风格的") and technical tails ("高清渲染", "景深效果", aspect ratios)
+  are stripped, then trimmed to ~80 chars of natural-reading text.
+
+```bash
+# Fully auto: only image + prompt-file (title & body derived)
+node scripts/publish_xiaohongshu.js \
+  --image cover.png \
+  --prompt-file prompts/20260628-01.md \
+  --topics "AI,架构"
+
+# Mix: derive the body, but set the title yourself
+node scripts/publish_xiaohongshu.js \
+  --image cover.png --prompt-file prompts/20260628-01.md \
+  --title "我用AI画了张架构图"
+```
+
+Always preview with `--dry-run` first — it prints the final title/body and tags
+each with its source `(--title)` / `(按图片风格自动生成)` / `(prompt 精简)` so
+you can sanity-check before anything touches the browser.
+
+### Generate-and-publish in one shot
+
+You don't need a pre-made image. Pass `--prompt "<描述>"` (no `--image`) and the
+script runs the whole pipeline itself: **generate the image** (via the same
+`generate-image.js` / codex / agy backend the Feishu channel uses) → **archive
+the prompt** to `prompts/YYYYMMDD-NN.md` → **derive title & body** from that
+prompt → publish (still stopping at the publish button by default).
+
+```bash
+# One shot: prompt → image → derived copy → publish page (stops at the button)
+node scripts/publish_xiaohongshu.js \
+  --prompt "赛博朋克风格的城市夜景，霓虹灯牌林立" \
+  --topics "AI,赛博朋克"
+
+# Same, with generation knobs + your own title, auto-publish
+node scripts/publish_xiaohongshu.js \
+  --prompt "水彩风格的猫躺在窗台" \
+  --provider codex --aspect-ratio 3:4 \
+  --title "周末的猫" --publish
+```
+
+Generation flags (only used when generating, i.e. no `--image`):
+`--provider auto|codex|gemini`, `--aspect-ratio` (default `3:4`, vertical for
+XHS), `--output` (defaults to a temp file). If generation fails/times out but
+codex already wrote the image, the script recovers it from
+`~/.codex/generated_images/` — same fallback as the Feishu orchestrator.
+
+### One-Time Setup
+
+```bash
+cd image-factory-skill
+npm install            # installs the playwright dependency
+npm run setup:xhs      # = playwright install chromium (downloads the browser)
+```
+
+### First Login (QR scan, once)
+
+On the first publish there's no saved session:
+
+1. The script detects "not logged in" and opens a **visible** browser window on
+   the Xiaohongshu login page
+2. Scan the QR code with the Xiaohongshu app
+3. The session is persisted to `--user-data-dir` (default
+   `~/.image-factory-skill/xhs-profile`); later runs skip the QR scan
+4. If the session expires, the script re-opens a visible window to re-scan
+
+### Publish (default = stop at the publish button)
+
+**By default the script fills cover + title + body + topics, then STOPS at the
+"发布" button, takes a screenshot, and does NOT click publish.** This matches
+xiaohongshu-ops's safety rule ("stop at the publish page, wait for user
+confirmation") and prevents accidental posting. Pass `--publish` to actually
+click publish.
+
+```bash
+# Default: fill everything, stop at the publish button (recommended)
+node scripts/publish_xiaohongshu.js \
+  --image cover.png \
+  --title "我用AI做了张图" \
+  --content "今天试了下AI生图，效果不错…" \
+  --topics "AI,效率工具"
+
+# Multi-image, body from file, auto-publish (explicit opt-in)
+node scripts/publish_xiaohongshu.js \
+  --image a.png,b.png,c.png \
+  --title "三图测评" \
+  --content-file body.md \
+  --publish
+
+# Preview args without launching a browser
+node scripts/publish_xiaohongshu.js --image x.png --title "x" --content "y" --dry-run
+```
+
+### Rules (aligned with xiaohongshu-ops publish SOP)
+
+- **Three required elements**: cover (first image), title, body
+- **Title ≤ 20 chars** — hard-validated; over-limit fails fast with a "compress"
+  hint
+- **Topics via UI dropdown**, not pasted text — the script types `#topic` then
+  selects the dropdown item so the topic entity isn't lost
+- **First image = cover**
+
+### Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--image`, `-i` | Existing image path(s), comma-separated or repeated (first = cover) | required unless `--prompt`/`--prompt-file` given |
+| `--prompt`, `-P` | Generation prompt: when no `--image`, generate the image first, then publish | - |
+| `--provider` | Generation backend `auto`/`codex`/`gemini` (only when generating) | auto |
+| `--aspect-ratio`, `--ar` | Image aspect ratio (only when generating) | 3:4 |
+| `--output`, `-o` | Save path for the generated image (only when generating) | temp file |
+| `--title`, `-t` | Note title (≤20 chars, hard-validated) | derived from prompt style if omitted |
+| `--content`, `-c` | Body text | derived from prompt if omitted |
+| `--content-file` | Read body from a file | - |
+| `--prompt-file` | Prompt file (`prompts/YYYYMMDD-NN.md`); image source AND/OR title/body derivation | - |
+| `--topics` | Topics, comma-separated (no `#`, added automatically) | - |
+| `--publish` | Actually click publish (default: stop at the button) | false |
+| `--headed` | Show the browser window (auto-on when not logged in) | false |
+| `--user-data-dir` | Persistent login profile dir | `~/.image-factory-skill/xhs-profile` |
+| `--screenshot` | Screenshot path when stopping | `/tmp/xhs-publish-<ts>.png` |
+| `--timeout` | Per-step timeout (ms) | 30000 |
+| `--dry-run` | Preview args/steps, no browser, no generation | false |
+
+Image, title, and body must each be resolvable: an image comes from `--image`
+OR from generating with `--prompt`/`--prompt-file`; title/body come from explicit
+flags OR prompt derivation. Explicit values always win.
+
+`XHS_USER_DATA_DIR` env var is equivalent to `--user-data-dir`.
+
+**Exit codes:** `0` success (stopped at button, or published) / `1` failure.
+
+### Selector Maintenance
+
+Xiaohongshu revamps its creator UI periodically. All selectors live in the
+`SELECTORS` block at the top of `publish_xiaohongshu.js`, each with multiple
+candidates + one retry. When a step reports "selector may be stale", run with
+`--headed`, inspect the real DOM, and prepend the new selector to the relevant
+key. See `references/xiaohongshu-publish-guide.md` for the full maintenance
+guide and troubleshooting table.
+
+## Publish to Douyin (抖音)
+
+A third output channel: publish a generated (or existing) image as a Douyin
+**image-text post (图文)** via a persistent Playwright session — same shape as
+the Xiaohongshu channel.
+
+> **Why a browser:** Douyin's creator platform has no public posting API; an
+> image-text post can only be published from a logged-in browser session. The
+> flow (creator.douyin.com → 高清发布 → 发布图文 tab → 上传图文 → 标题/简介 →
+> 发布) runs on a Playwright persistent context.
+
+### When to Use
+
+- User asks to "发布到抖音", "发一篇抖音图文", "publish to douyin"
+- User has an image (just generated, or pre-existing) plus a title/description
+
+### One-Time Setup
+
+```bash
+cd image-factory-skill
+npm install              # installs the playwright dependency
+npm run setup:douyin     # = playwright install chromium (shared with the XHS channel)
+```
+
+### First Login (QR scan, once)
+
+1. The script detects "not logged in" and opens a **visible** window on
+   `creator.douyin.com`, auto-clicking the 「登录」entry to surface the QR
+2. Scan with the Douyin app; if SMS verification is triggered, complete it in
+   the window
+3. Session persists to `--user-data-dir` (default
+   `~/.image-factory-skill/douyin-profile`); later runs skip the QR scan
+
+> Login is detected only by the 「高清发布」button (present only when logged in).
+> Avatar elements are NOT used — the logged-out landing page has them too.
+
+### Publish (default = stop at the publish button)
+
+**Same safety model as XHS:** fill image + title + description, then STOP at the
+「发布」button and screenshot. Pass `--publish` to actually click publish (then
+the script checks the success toast).
+
+```bash
+# One shot: prompt → image → derived title/description → publish page (stops)
+node scripts/publish_douyin.js --prompt "赛博朋克风格的城市夜景" --topics "AI,夜景"
+
+# Existing image + explicit copy
+node scripts/publish_douyin.js \
+  --image cover.png --title "我的标题" --content "简介正文" --topics "AI"
+
+# Multi-image, description from file, auto-publish
+node scripts/publish_douyin.js \
+  --image a.png,b.png --title "三图" --content-file body.md --publish
+
+# Preview only (no browser, no generation)
+node scripts/publish_douyin.js --prompt "水彩风格的猫" --dry-run
+```
+
+### Differences from the XHS channel
+
+- **Title cap is 30 chars** (XHS is 20) — hard-validated all the same.
+- **Topics**: Douyin has no separate topic dropdown, so `--topics` are appended
+  to the description as `#tag` text.
+- **Background music (default ON)**: after filling the description, the script
+  auto-selects the **first track in the 「推荐」(Recommended) list** (open 选择音乐
+  → hover first song → click 使用). Pass `--no-music` to skip. Failure only warns
+  and does not block publishing.
+- **`--publish` forces a headed (visible) browser**: Douyin's publish action is
+  blocked under headless (click → stuck on 「正在发布」 forever, never lands). The
+  script auto-switches to headed when `--publish` is set; default stop-at-button
+  and `--dry-run` stay headless. (XHS publishes fine headless — this is
+  Douyin-specific.)
+- **Aspect ratio** default `3:4` (vertical), same as XHS.
+- **Profile dir**: `~/.image-factory-skill/douyin-profile` (env override:
+  `DOUYIN_USER_DATA_DIR`).
+- Title/description auto-derivation (style→title, condensed prompt→body) is
+  **identical** to the XHS channel.
+
+### Arguments
+
+Same as `publish_xiaohongshu.js` except `--topics` go into the description and
+`--title` allows ≤30 chars. Run `node scripts/publish_douyin.js --help` for the
+full list.
+
+### Selector Maintenance
+
+All selectors live in the `SELECTORS` block at the top of `publish_douyin.js`.
+When a step reports a stale selector, run with `--headed`, inspect the DOM, and
+prepend the new selector. See `references/douyin-publish-guide.md` for the full
+maintenance table (keys: `hdPublishBtn` / `tabImageText` / `uploadImageTextBtn`
+/ `uploadFileInput` / `titleInput` / `descriptionInput` / `publishContainer` /
+`loggedIn`).
+
 ## Command-Line Interface
+
 
 The skill uses `scripts/send_feishu_image.py` as the main orchestrator. You can call it directly or via the skill workflow.
 
@@ -252,7 +521,8 @@ python scripts/send_feishu_image.py --prompt-file prompts/20260625-01.md
 ```
 
 The archiving is handled by `archive_prompt()` in `send_feishu_image.py` — no
-manual sequence management needed. See `prompts/README.md` for details.
+manual sequence management needed. Both publish channels reuse the same
+naming via `archive_prompt()` in `publish_xiaohongshu.js` / `publish_douyin.js`.
 
 > **Note on full-prompt fidelity:** The prompt parser uses `\Z` (true
 > end-of-string), not `$` (end-of-line). An earlier bug used `$` with the
@@ -460,21 +730,29 @@ Use warm cream background with black lines and pastel blocks."
 
 - **Node.js** (>=14.0.0): For `generate-image.js`
 - **Python** (>=3.6): For orchestrator script
-- **lark-cli**: Feishu/Lark command-line tool
-- **Image backend**: codex-cli OR agy (at least one required)
+- **lark-cli**: Feishu/Lark command-line tool (Feishu channel only)
+- **Image backend**: codex-cli OR agy (at least one required for generation)
+- **Playwright** (Xiaohongshu channel only): `npm install` + `npm run setup:xhs`
+  (= `playwright install chromium`). Node >=18 recommended for this channel.
 
 Run verification:
 ```bash
-node --version      # Should be >=14
+node --version      # Should be >=14 (>=18 for the XHS channel)
 python3 --version   # Should be >=3.6
-lark-cli --version  # Should show installed version
-which codex || which agy  # At least one should exist
+lark-cli --version  # Should show installed version (Feishu channel)
+which codex || which agy  # At least one should exist (for generation)
+# Xiaohongshu channel:
+npm run setup:xhs && node scripts/publish_xiaohongshu.js --help
 ```
 
 ## Reference Documentation
 
 - `references/feishu-cli-guide.md` - Complete Feishu CLI setup and troubleshooting
+- `references/xiaohongshu-publish-guide.md` - Xiaohongshu publish SOP, first login, selector maintenance
+- `references/douyin-publish-guide.md` - Douyin publish SOP, first login, selector maintenance
 - `scripts/generate-image.js` - Image generation implementation (from article-illustration-tools)
+- `scripts/publish_xiaohongshu.js` - Xiaohongshu image-text note publisher (Playwright)
+- `scripts/publish_douyin.js` - Douyin image-text post publisher (Playwright)
 - Feishu Open Platform: https://open.feishu.cn/document/
 - lark-cli GitHub: https://github.com/larksuite/cli
 
