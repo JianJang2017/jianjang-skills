@@ -1,7 +1,7 @@
 ---
 name: image-factory-skill
-description: Generate AI images from prompts and either send them to Feishu (Lark) users/group chats via lark-cli, OR publish them as Xiaohongshu (RedNote/小红书) image-text notes, OR publish them as Douyin (抖音) image-text posts — both via persistent Playwright browser sessions. Use when user asks to "generate an image and send to Feishu", "create image and push to lark", "生成图片并发送到飞书", "给某某发一张图", "发布到小红书", "发一篇小红书笔记", "publish to xiaohongshu / rednote", "发布到抖音", "发一篇抖音图文", "publish to douyin", or wants to push AI-generated images to Feishu recipients/groups or post them as a Xiaohongshu note or Douyin image-text post.
-version: 1.2.0
+description: Generate AI images from prompts and either send them to Feishu (Lark) users/group chats via lark-cli, OR publish them as Xiaohongshu (RedNote/小红书) image-text notes, OR publish them as Douyin (抖音) image-text posts — both via persistent Playwright browser sessions. ALSO supports reverse-engineering a generation prompt from an existing image, optimizing an existing prompt by style preset, AND generating character portrait prompts from scratch (subject + style preset → ready-to-use portrait prompt with camera/lighting/quality terms), all via codex-cli / agy. Use when user asks to "generate an image and send to Feishu", "create image and push to lark", "生成图片并发送到飞书", "给某某发一张图", "发布到小红书", "发一篇小红书笔记", "publish to xiaohongshu / rednote", "发布到抖音", "发一篇抖音图文", "publish to douyin", OR when user wants to "反推 prompt", "看图猜 prompt", "reverse prompt from image", "image to prompt", "把这张图变成 prompt", "优化 prompt", "改写 prompt", "polish prompt", "optimize image prompt", OR "生成人物图 prompt", "写一条人物写真 prompt", "generate portrait prompt", "character prompt from subject", "古风人物提示词", or wants to push AI-generated images to Feishu/Xiaohongshu/Douyin OR turn an image back into a reusable text-to-image prompt OR restructure a rough prompt under a specific style preset (hand-drawn / blueprint / watercolor / cyberpunk / 3d / healing / minimal / photo / gufeng-portrait / photo-portrait) OR create a ready-to-use character portrait prompt from a simple subject description (one-liner → structured prompt with style/camera/lighting/quality/negative).
+version: 1.4.0
 ---
 
 # Image Factory Skill
@@ -473,7 +473,244 @@ maintenance table (keys: `hdPublishBtn` / `tabImageText` / `uploadImageTextBtn`
 / `uploadFileInput` / `titleInput` / `descriptionInput` / `publishContainer` /
 `loggedIn`).
 
-## Command-Line Interface
+## Reverse-Engineer & Optimize Prompts
+
+A fourth capability, parallel to the three publish channels: **turn an image
+back into a reusable text-to-image prompt** (reverse), and **restructure /
+upgrade an existing prompt under a style preset** (optimize). Both run on the
+same `codex-cli` / `agy` backends as image generation, so no extra
+dependencies. Output format is identical to `prompts/YYYYMMDD-NN.md`, which
+means the whole pipeline composes:
+
+```
+某张图 ──reverse──▶ prompt ──optimize──▶ 更好的 prompt ──generate-image──▶ 新图 ──send/publish──▶ ...
+```
+
+### When to use
+
+- 「这张图是怎么 prompt 出来的？」 / "reverse prompt from this image"
+- 「这条 prompt 太糙了，能不能 polish 一下」 / "optimize this prompt for blueprint style"
+- 想批量基于一张参考图迭代变体 — 先反推、改风格、再生成
+- 给 Xiaohongshu / Douyin 图文反向准备 prompt（已发出去的图想再产一批同风格的）
+
+### Reverse: image → prompt
+
+`scripts/reverse-prompt.js` 读取一张图，让 codex/agy 反推出"最可能生成这张图
+的 prompt"，按 `[Style] + [Type] + [Content] + [Key elements]` 结构输出，附带
+`STYLE_TAG`（风格标签）和 `ASPECT_HINT`（建议长宽比）。
+
+```bash
+# 看图说话：prompt 直接打到 stdout（其他日志走 stderr，便于 pipe）
+node scripts/reverse-prompt.js -i cover.png
+
+# 反推 + 归档到 prompts/YYYYMMDD-NN.md（source: reverse 标记）
+node scripts/reverse-prompt.js -i cover.png --archive --ar 3:4
+
+# 写到独立文件，用 agy 后端
+node scripts/reverse-prompt.js -i cover.png -p agy -o reversed.md
+
+# 机器消费：仅输出 JSON
+node scripts/reverse-prompt.js -i cover.png --json
+```
+
+**Key arguments:**
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--image`, `-i` | 源图片路径 | required |
+| `--output`, `-o` | 输出文件（带 frontmatter） | - |
+| `--archive` | 自动归档到 `prompts/YYYYMMDD-NN.md` | false |
+| `--provider`, `-p` | `auto` / `codex` / `agy` | auto |
+| `--lang`, `-l` | `zh` 中文主体技术词英文 / `en` / `auto` | zh |
+| `--aspect-ratio`, `--ar` | 写入归档文件的 aspect_ratio | auto |
+| `--json` | 仅输出 JSON 到 stdout | false |
+| `--dry-run` | 打印调用计划，不实际跑后端 | false |
+
+**Output format**（归档/`--output` 文件）：
+
+```yaml
+---
+aspect_ratio: "3:4"
+provider: codex
+source: reverse
+source_image: /abs/path/to/cover.png
+style_tag: hand-drawn
+timestamp: 2026-06-29T...
+---
+
+PROMPT:
+<反推出来的 prompt 主体>
+```
+
+stdout 上的裸 PROMPT 文本可以直接 pipe，例如 `node reverse-prompt.js -i a.png | node optimize-prompt.js --stdin -s blueprint`。
+
+### Optimize: prompt → 更好的 prompt
+
+`scripts/optimize-prompt.js` 接受一段原始 prompt（来自用户、reverse-prompt、
+或 `prompts/` 归档文件），按 `[Style] + [Type] + [Content] + [Key elements]`
+结构改写，可指定风格预设。仅做改写，不调用生图 — 想生图就把 stdout 喂回
+`generate-image.js`。
+
+```bash
+# 字面 prompt + 风格预设
+node scripts/optimize-prompt.js \
+  --prompt "画一张三层 web 架构图" \
+  --style blueprint \
+  --archive --ar 16:9
+
+# 复用归档过的 prompt（路径直接给 prompts/ 下的文件即可）
+node scripts/optimize-prompt.js \
+  --prompt-file prompts/20260628-01.md \
+  --style hand-drawn -o optimized.md
+
+# 从 stdin 读（适合串联）
+node scripts/reverse-prompt.js -i cover.png \
+  | node scripts/optimize-prompt.js --stdin --style cyberpunk --archive
+
+# 看可用风格预设
+node scripts/optimize-prompt.js --list-styles
+```
+
+**Style presets**（与 SKILL.md 内现有的风格关键词表对齐）：
+
+| Preset | 中文描述 | 关键词 |
+|--------|---------|--------|
+| `hand-drawn` | 手绘风 | warm cream background, black ink lines, pastel color blocks |
+| `blueprint`  | 科技蓝图 | blueprint grid, white wireframe lines, cyan tone |
+| `watercolor` | 水彩 | soft light, paper texture, ink bleed |
+| `cyberpunk`  | 赛博朋克 | neon lights, rainy night, magenta + cyan |
+| `3d`         | 3D 渲染 | soft lighting, depth of field, realistic materials |
+| `healing`    | 治愈系 | soft palette, low saturation, warm tone |
+| `minimal`    | 极简 | generous whitespace, oversized typography |
+| `photo`      | 摄影风 | natural light, cinematic, 35mm look |
+| `keep`       | 保留原风格 | 仅做结构化和措辞润色，不替换风格 |
+| `auto`       | 自动 | 由后端按原 prompt 语境判断（默认） |
+
+**Key arguments:**
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--prompt` / `--prompt-file` / `--stdin` | 原始 prompt 来源（三选一） | required |
+| `--style`, `-s` | 见上表 | auto |
+| `--lang`, `-l` | `zh` / `en` / `auto` | zh |
+| `--provider`, `-p` | `auto` / `codex` / `agy` | auto |
+| `--output`, `-o` | 优化后 prompt 写入文件 | - |
+| `--archive` | 自动归档到 `prompts/YYYYMMDD-NN.md`（`source: optimize`） | false |
+| `--aspect-ratio`, `--ar` | 写入归档/输出文件的 aspect_ratio | auto |
+| `--json` | 仅输出 JSON | false |
+| `--dry-run` | 打印 optimization prompt 预览，不调后端 | false |
+
+归档文件的 frontmatter 标记 `source: optimize`、`style: <preset>`，便于之后区分。
+
+### Common pipelines
+
+**A. 「我有一张图，想要一张同风格但内容稍改的新图」**
+
+```bash
+# 1. 反推
+node scripts/reverse-prompt.js -i original.png --archive --ar 3:4
+# → prompts/20260629-01.md  (source: reverse)
+
+# 2. 优化 / 改内容（手动 edit 那个 md 文件里的 PROMPT 段，或用 optimize）
+node scripts/optimize-prompt.js \
+  --prompt-file prompts/20260629-01.md --style keep --archive
+# → prompts/20260629-02.md  (source: optimize)
+
+# 3. 生图
+node scripts/generate-image.js \
+  --prompt-file prompts/20260629-02.md --output new.png --ar 3:4
+
+# 4. 发飞书 / 发小红书 / 发抖音（任选其一）
+python scripts/send_feishu_image.py --image new.png --user-ids ou_xxx
+```
+
+**B. 「这条粗略的 prompt 帮我打磨成蓝图风」**
+
+```bash
+node scripts/optimize-prompt.js \
+  --prompt "三层 web 架构图：前端、API、数据库" \
+  --style blueprint --archive --ar 16:9
+# → 输出 + 归档好的 prompt
+```
+
+**C. 「直接走完反推 → 优化 → 生图 → 发抖音」**
+
+```bash
+node scripts/reverse-prompt.js -i ref.png \
+  | node scripts/optimize-prompt.js --stdin --style cyberpunk -o /tmp/p.md \
+  && node scripts/generate-image.js --prompt-file /tmp/p.md --output /tmp/new.png --ar 3:4 \
+  && node scripts/publish_douyin.js --image /tmp/new.png --prompt-file /tmp/p.md
+```
+
+### Error handling
+
+- **后端不可用**：脚本启动时 `which codex / which agy`，两个都没装就报 `没找到可用的后端`。装 codex-cli 或 agy 任一即可（与图片生成共用）。
+- **后端没产出 `PROMPT:` 段**：脚本会去掉常见噪声（thinking / tokens used 行）后兜底当作 prompt 返回，但 stderr 会提示，加 `--verbose` 看后端原始输出再判断。
+- **超时**：默认 3 分钟；`--timeout 300` 可调大。
+- **图片读不到**：reverse 启动前做 `stat()`，找不到立刻报错。
+
+### Limitations
+
+1. 后端是 codex/agy，**没有专门的视觉模型**：反推质量与后端读图能力强相关。codex 通常优于 agy。
+2. 风格预设是"关键词 + 中文描述"的提示注入，不保证后端 100% 遵循 — 复杂场景下可能要手工再润色一遍。
+3. 不做对抗性 prompt 评估，也不打分 — 这是个生成器，不是评估器。
+
+## Generate Portrait Prompt (Character/Figure from Scratch)
+
+A third parallel capability: **主体描述 + 风格预设 → 一条开箱即生图的人物图 prompt**。
+
+与前两个（reverse / optimize）的区别：
+- reverse:图 → prompt（已有图，反推）
+- optimize:prompt → 更好的 prompt（已有 prompt，改写）
+- **portrait:主体一句话 + 风格 → 完整人物图 prompt**（**从零开始**，按风格生成一条含 [Style][Type][Content][Key elements] + 镜头/光照/画质/负面提示的单人写真 prompt）
+
+适合场景：你知道要画什么人物主体（"雪中红衣女子回眸"/"咖啡馆看书的女孩"），但不想从零拼 prompt、不确定镜头/光照/画质词该怎么写 — 交给这个脚本，它会基于风格预设（如 gufeng-portrait 古风宫廷写真 / photo-portrait 写实人像摄影）生成一条符合生图要求的完整 prompt。
+
+### When to use
+
+- 「我想要一张古风人物图，主体是 XX，帮我写条生图 prompt」
+- 「生成人物图提示词：一位临窗抚琴的少女」
+- 「写一条"雪中红衣女子回眸"的古风写真 prompt」
+- 想快速出人物图，但不想手写一长串 [Style] + camera + lighting + quality + negative
+
+### Usage
+
+`scripts/generate-portrait-prompt.js` 输入主体（`--subject`）+ 风格（`--style`），用 codex/agy 生成结构化的单人人物图 prompt。stdout 裸 prompt 可 pipe 给 `generate-image.js`。
+
+```bash
+# 最简：一句话主体，用默认古风写真风格，归档
+node scripts/generate-portrait-prompt.js -S "雪中红衣女子回眸" --archive
+
+# 指定风格 photo-portrait，写入文件
+node scripts/generate-portrait-prompt.js \
+  -S "咖啡馆里看书的女孩" -s photo-portrait -o p.md --ar 3:4
+
+# 生成后直接喂给 generate-image.js（pipe）
+node scripts/generate-portrait-prompt.js -S "临窗抚琴的古风少女" \
+  | node scripts/generate-image.js --stdin --output out.png --ar 3:4
+
+# 看可用风格预设（[人物] 标记的是人物写真专用）
+node scripts/generate-portrait-prompt.js --list-styles
+```
+
+**Key arguments:** `--subject/-S`（必填，主体一句话）、`--style/-s`（默认 gufeng-portrait）、`--archive`（归档到 prompts/，source: portrait）、`--output/-o`（写文件）、`--ar`（默认 3:4）、`--list-styles`（看风格）、`--dry-run`（打印 generation prompt 预览）。
+
+**可用风格**（人物写真专用，`kind: 'portrait'`）：
+- `gufeng-portrait`（古风宫廷写真）：warm cream 米白背景、金线质感、柔焦棚拍、汉服盘发珠钗、清透古风妆
+- `photo-portrait`（写实人像摄影）：自然光、真实皮肤质感、电影感
+
+通用风格（hand-drawn / blueprint 等）也能用，但没有专门的人物拍摄指引。**扩展风格**：编辑 `scripts/styles.js`，加一条 `kind: 'portrait'` 预设（含 camera/lighting/composition/quality/negative）即可。
+
+**Output format**（归档文件）：frontmatter 含 `source: portrait` + `style` + `subject` + `negative`，PROMPT 主体含 [Style][Type][Content][Key elements] 四段 + 画质词。Negative 在 frontmatter 里，生图时作为负面提示传给后端。
+
+**设计说明**：
+
+1. **为什么不直接用 optimize？** optimize 是"改写已有 prompt"；portrait 是"从主体一句话凭空生成"，输入不同。Portrait 生成的 prompt 已经是结构化 + 带画质词/负面提示的"开箱即生图"版本。
+2. **默认 gufeng-portrait？** 从 `images/` 下四张「古代女子妆容」海报反推沉淀的风格，古风人物是高频需求，默认就给它。
+3. **能否多人/群像？** 不能。本脚本专注"单人人物写真"，prompt 模板明确要求单人，负面提示屏蔽了"四宫格/多人/拼图"。多人群像用 optimize 或手写。
+
+
+
 
 
 The skill uses `scripts/send_feishu_image.py` as the main orchestrator. You can call it directly or via the skill workflow.
@@ -766,7 +1003,12 @@ npm run setup:xhs && node scripts/publish_xiaohongshu.js --help
 - `references/feishu-cli-guide.md` - Complete Feishu CLI setup and troubleshooting
 - `references/xiaohongshu-publish-guide.md` - Xiaohongshu publish SOP, first login, selector maintenance
 - `references/douyin-publish-guide.md` - Douyin publish SOP, first login, selector maintenance
+- `references/reverse-and-optimize-guide.md` - 反推 / 优化 prompt 的设计说明、style preset 表、常见问题、扩展风格库方法
+- `scripts/styles.js` - 共享风格预设库（reverse / optimize / portrait 三个脚本共用）；扩展风格只需编辑此文件
 - `scripts/generate-image.js` - Image generation implementation (from article-illustration-tools)
+- `scripts/reverse-prompt.js` - 图片 → prompt 反推 (codex / agy)
+- `scripts/optimize-prompt.js` - prompt → 优化 prompt（含风格预设, codex / agy）
+- `scripts/generate-portrait-prompt.js` - 主体描述 + 风格 → 人物图 prompt（从零生成，含镜头/光照/画质/负面提示，codex / agy）
 - `scripts/publish_xiaohongshu.js` - Xiaohongshu image-text note publisher (Playwright)
 - `scripts/publish_douyin.js` - Douyin image-text post publisher (Playwright)
 - Feishu Open Platform: https://open.feishu.cn/document/

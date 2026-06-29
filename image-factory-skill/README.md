@@ -1,14 +1,22 @@
 # Image Factory Skill
 
-根据 prompt 生成 AI 图片，并**通过飞书 CLI 发送给用户/群组**，或**发布为小红书图文笔记**，或**发布为抖音图文**。
+根据 prompt 生成 AI 图片，并**通过飞书 CLI 发送给用户/群组**，或**发布为小红书图文笔记**，或**发布为抖音图文**；也支持**从图片反推 prompt**、**优化 prompt**（含风格预设）、**从主体描述生成人物图 prompt**（主体一句话 + 风格预设 → 结构化单人写真 prompt，含镜头/光照/画质/负面提示）。
 
 ## 能做什么
 
-输入一句图片描述 → 自动生成图片 → 三条输出通道任选：
+**正向**：输入一句图片描述 → 自动生成图片 → 三条输出通道任选：
 
 - **飞书**：推送到飞书的人或群。图片、配文与生成 prompt 合成**一条**富文本消息，prompt 以可复制文本附在图下；多目标时图片只上传一次、并发发送。
 - **小红书**：把图片 + 标题/正文/话题发布为图文笔记。默认**停在「发布」按钮**等你人工确认（防误发），加 `--publish` 才自动发布。
 - **抖音**：把图片 + 标题/简介发布为图文。同样默认**停在「发布」按钮**，加 `--publish` 才自动发布。
+
+**反向**：
+
+- **反推 prompt**：丢一张图给 `scripts/reverse-prompt.js`，自动反推出"用文生图模型最可能生成它的那条 prompt"，按 `[Style] + [Type] + [Content] + [Key elements]` 结构输出，可归档到 `prompts/`。支持 `--ignore-ui`（默认 ON，屏蔽 App/系统 UI 元素）和 `--keep-ui`（截图复刻场景保留 UI）。
+- **优化 prompt**：`scripts/optimize-prompt.js` 把一段粗 prompt 按结构改写，支持 10 种风格预设（hand-drawn / blueprint / watercolor / cyberpunk / 3d / healing / minimal / photo / gufeng-portrait / photo-portrait），也支持 `keep`（保留原风格）。
+- **生成人物图 prompt**：`scripts/generate-portrait-prompt.js` 从"一句话主体描述 + 风格预设"生成一条开箱即生图的单人人物图 prompt（含 [Style][Type][Content][Key elements] + 镜头/光照/画质词/负面提示），省去手写镜头/光照/画质词的麻烦。默认古风宫廷写真风（gufeng-portrait，从 `images/` 下四张「古代女子妆容」海报反推沉淀），也支持 photo-portrait（写实人像摄影）。
+
+三者都跑在同样的 codex/agy 后端，无新依赖。可串联：`reverse | optimize | generate-image | send/publish` 或 `generate-portrait-prompt | generate-image | publish`。
 
 ```
 "生成一张科技感的系统架构图，发给张三"
@@ -16,6 +24,9 @@
 "把 output/diagram.png 发给开发组和产品组"
 "把这张图发一篇小红书笔记，标题 XX，正文 XX"
 "生成一张赛博朋克城市夜景，发一篇抖音图文"
+"这张图是怎么 prompt 出来的？"          # → reverse-prompt
+"把这条 prompt 改成蓝图风"               # → optimize-prompt --style blueprint
+"生成人物图 prompt：雪中红衣女子回眸"    # → generate-portrait-prompt（新）
 ```
 
 ## 快速开始

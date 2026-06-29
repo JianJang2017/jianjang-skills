@@ -1,0 +1,41 @@
+{
+  "skill_name": "markdown-post-skill",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "把 ~/notes/2026-q2-springboot-rocketmq.md 这篇技术稿发到掘金存个草稿就行,我等会自己点发布。frontmatter 里 title/category/tags 都写好了。",
+      "expected_output": "脚本 publish_juejin.py 接入已登录 Chrome,新建草稿,写正文+标题,不点发布;返回 platform=juejin、status=draft、draft_url 非空。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我刚写完一篇带配图的文章 ./post.md,有 5 张本地图片在同目录 img/ 下,帮我发到稀土掘金。务必保证图片不丢。",
+      "expected_output": "publish_juejin.py 扫到 5 张本地图,逐张上传掘金 CDN,正文里 ./img/xx.png 全部替换成 https://...byteimg.com/...,写入编辑器存草稿;返回 images_uploaded=5/total=5。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "/tmp/quick-note.md 这篇短文直接发布到掘金人工智能分类,标签加上 ChatGPT 和 LLM。",
+      "expected_output": "publish_juejin.py --publish;预填 category=人工智能、tags=[ChatGPT, LLM],点确认发布,article_url 形如 https://juejin.cn/post/<id>,status=published。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "把 ~/work/team-weekly/W26.md 这篇带 3 张架构图的周报发到飞帆,先存草稿,等会找老板看一眼再发。",
+      "expected_output": "脚本 publish_feifan.py 走持久化 profile 接入 Chrome，goto writeAnArticle，URL 检查登录态，自动切到 MD 编辑器，剪贴板路径上传 3 张本地图到讯飞 OSS（响应 data.url 是相对路径 /oss/...），CM6 dispatch 写正文+标题，靠飞帆自动保存生成草稿；返回 platform=feifan、status=draft、images_uploaded=3、page_url 形如 https://feifan.iflytek.com/writeAnArticle?articleid=*。",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "把 /Users/me/notes/迁移方案.md 同步到 feifan.iflytek.com,这篇没图但是有标题、分类「技术分享」、标签 ['DevOps','迁移'],默认草稿就行。",
+      "expected_output": "publish_feifan.py 跳过图片上传，切 MD 模式后 CM6 dispatch 写正文+标题，飞帆自动保存生成草稿；分类/标签会在 result.notes 里回显给用户照填（实测飞帆的元数据在「点发布」后的模板选择弹窗里，脚本不替用户选模板）；返回 platform=feifan、status=draft。",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "我这篇 md 想同时发到掘金和讯飞飞帆两个地方,~/articles/llm-cost-analysis.md,都先存草稿。",
+      "expected_output": "依次跑两个脚本——publish_juejin.py 然后 publish_feifan.py,两次都存草稿,返回两份独立的 JSON 结果,用户分别在浏览器核对。",
+      "files": []
+    }
+  ]
+}
