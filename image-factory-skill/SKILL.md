@@ -324,6 +324,17 @@ node scripts/publish_xiaohongshu.js --image x.png --title "x" --content "y" --dr
 - **Topics via UI dropdown**, not pasted text — the script types `#topic` then
   selects the dropdown item so the topic entity isn't lost
 - **First image = cover**
+- **AI-content declaration (default ON)**: selects 「添加内容类型声明 → 笔记含AI合成内容」
+  (note: 「合成」, not 「生成」 like Douyin). Pass `--no-ai-declare` to skip. After
+  picking, the script dismisses the dropdown overlay (Escape + click the title
+  input) so it doesn't cover the publish button. Failure only warns.
+- **⚠️ Viewport is locked at 1280×900**: the publish button's red-pixel click
+  coordinates depend on it. Raising the height (e.g. to fit the declaration
+  dropdown) shifts the sticky publish bar and makes every publish silently fail.
+- **⚠️ Copyrighted-IP text is silently blocked**: titles/topics with IP terms
+  (原神/凝光/cos/空姐 …) get rejected by XHS with no error, no draft, no review
+  record — the note just never posts. Same image with generic copy publishes
+  fine. De-IP the copy for fan/IP content.
 
 ### Arguments
 
@@ -430,6 +441,12 @@ node scripts/publish_douyin.js --prompt "水彩风格的猫" --dry-run
   auto-selects the **first track in the 「推荐」(Recommended) list** (open 选择音乐
   → hover first song → click 使用). Pass `--no-music` to skip. Failure only warns
   and does not block publishing.
+- **AI-content declaration (default ON, compliance-critical)**: AI-generated
+  content must be declared on Douyin or it's flagged as a violation / throttled.
+  The script auto-selects 「自主声明 → 内容由AI生成」 (open the declaration entry →
+  pick the 内容由AI生成 radio → click 确定). Pass `--no-ai-declare` to skip.
+  Failure **warns loudly** (missing declaration is a compliance risk) and asks
+  you to pick it manually in the window.
 - **`--publish` forces a headed (visible) browser**: Douyin's publish action is
   blocked under headless (click → stuck on 「正在发布」 forever, never lands). The
   script auto-switches to headed when `--publish` is set; default stop-at-button
@@ -521,8 +538,7 @@ python scripts/send_feishu_image.py --prompt-file prompts/20260625-01.md
 ```
 
 The archiving is handled by `archive_prompt()` in `send_feishu_image.py` — no
-manual sequence management needed. Both publish channels reuse the same
-naming via `archive_prompt()` in `publish_xiaohongshu.js` / `publish_douyin.js`.
+manual sequence management needed. See `prompts/README.md` for details.
 
 > **Note on full-prompt fidelity:** The prompt parser uses `\Z` (true
 > end-of-string), not `$` (end-of-line). An earlier bug used `$` with the

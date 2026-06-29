@@ -127,6 +127,22 @@ const SELECTORS = {
     'button[class*="apply-btn"]',
     'button.semi-button-primary:has-text("使用")',
   ],
+  // 「自主声明」入口（编辑页设置区，点开弹「请选择声明类型」模态框）
+  declareEntry: [
+    'div[class*="controlWrapper"]:has-text("请选择自主声明")',
+    'div[class*="selectText"]:has-text("请选择自主声明")',
+    'text=请选择自主声明',
+  ],
+  // 声明弹窗里「内容由AI生成」单选项
+  declareAIOption: [
+    'label:has-text("内容由AI生成")',
+    'span.semi-radio-addon:has-text("内容由AI生成")',
+    'text=内容由AI生成',
+  ],
+  // 声明弹窗「确定」按钮（选中某项后才从 disabled 变可点）
+  declareConfirmBtn: [
+    'button:has-text("确定")',
+  ],
   // 发布按钮所在卡片容器（发布按钮文本严格等于「发布」，在容器里用文本筛）
   publishContainer: [
     'div[class*="card-container-creator-layout"]',
@@ -154,6 +170,7 @@ function parseArgs() {
     promptFile: null,       // 自动推导 title/content（也可作生图来源）
     topics: [],             // 话题，作为 #tag 追加到简介末尾
     music: true,            // 默认自动选「推荐」第一首配乐；--no-music 关闭
+    aiDeclare: true,        // 默认勾选「自主声明=内容由AI生成」(AI内容不声明会违规)；--no-ai-declare 关闭
     publish: false,
     headed: false,
     userDataDir: process.env.DOUYIN_USER_DATA_DIR || DEFAULTS.userDataDir,
@@ -181,6 +198,7 @@ function parseArgs() {
         break;
       case '--publish': cfg.publish = true; break;
       case '--no-music': cfg.music = false; break;
+      case '--no-ai-declare': cfg.aiDeclare = false; break;
       case '--headed': cfg.headed = true; break;
       case '--user-data-dir': cfg.userDataDir = args[++i]; break;
       case '--screenshot': cfg.screenshot = args[++i]; break;
@@ -223,6 +241,7 @@ function printHelp() {
 可选:
   --topics <a,b,c>         话题，逗号分隔（不带 #，脚本自动加），追加到简介末尾
   --no-music               不自动配乐（默认会自动选「推荐」第一首配乐）
+  --no-ai-declare          不勾选AI生成声明（默认勾选「内容由AI生成」，AI内容不声明有违规风险）
   --publish                自动点击发布（默认仅停在发布按钮，等人工确认）
   --headed                 显示浏览器窗口（首次登录/调试；未登录时自动开启）
   --user-data-dir <目录>   持久化登录态目录（默认 ~/.image-factory-skill/douyin-profile）
@@ -288,20 +307,26 @@ function execCommand(command, cmdArgs, timeoutMs) {
   });
 }
 
-/** 兜底：generate-image.js 失败/超时但 codex 已落盘时，捞 sinceTs 之后最新的图复制到 output。 */
+/** 兜底：generate-image.js 失败/超时但 codex 已落盘时，捞 sinceTs 之后最新的图复制到 output。
+ *  注意：codex 把图写在会话子目录 ~/.codex/generated_images/<session>/xxx.png，
+ *  所以必须递归子目录，不能只扫顶层（早期 bug：只扫顶层导致永远捞不到、误报生成失败）。 */
 async function recoverCodexImage(output, sinceTs) {
   let newest = null;
-  let entries;
-  try { entries = await readdir(CODEX_GENERATED_DIR, { withFileTypes: true }); } catch { return null; }
-  for (const ent of entries) {
-    if (!ent.isFile() || !/\.(png|jpe?g|webp)$/i.test(ent.name)) continue;
-    const full = join(CODEX_GENERATED_DIR, ent.name);
-    try {
-      const st = await stat(full);
-      if (st.mtimeMs < sinceTs || st.size < 1024) continue;
-      if (!newest || st.mtimeMs > newest.mtime) newest = { path: full, mtime: st.mtimeMs };
-    } catch { /* skip */ }
+  async function walk(dir) {
+    let entries;
+    try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = join(dir, ent.name);
+      if (ent.isDirectory()) { await walk(full); continue; }
+      if (!ent.isFile() || !/\.(png|jpe?g|webp)$/i.test(ent.name)) continue;
+      try {
+        const st = await stat(full);
+        if (st.mtimeMs < sinceTs || st.size < 1024) continue;
+        if (!newest || st.mtimeMs > newest.mtime) newest = { path: full, mtime: st.mtimeMs };
+      } catch { /* skip */ }
+    }
   }
+  await walk(CODEX_GENERATED_DIR);
   if (!newest) return null;
   try {
     await mkdir(dirname(resolve(output)), { recursive: true });
@@ -654,6 +679,44 @@ async function selectRecommendedMusic(page, timeout) {
 }
 
 /**
+ * 勾选「自主声明 = 内容由AI生成」。AI 生成内容不声明会被判违规/限流，所以这步默认开启。
+ * 流程：点「请选择自主声明」入口 → 弹窗里选「内容由AI生成」单选 → 点「确定」(选中后才可点)。
+ * 成功返回 true；任何一步失败返回 false（调用方会明确警告，因为漏声明有合规风险）。
+ */
+async function selectAIDeclaration(page, timeout) {
+  // 1) 打开声明弹窗
+  const entry = await firstVisible(page, SELECTORS.declareEntry, 6000);
+  if (!entry) return false;
+  await entry.scrollIntoViewIfNeeded().catch(() => {});
+  await entry.click().catch(() => {});
+  await sleep(2500);
+
+  // 2) 选「内容由AI生成」单选项
+  const opt = await firstVisible(page, SELECTORS.declareAIOption, 5000);
+  if (!opt) return false;
+  await opt.click().catch(() => {});
+  await sleep(1000);
+
+  // 3) 点「确定」（页面可能同时存在多个「确定」，取最后一个=弹窗内的）
+  let confirmed = false;
+  for (const sel of SELECTORS.declareConfirmBtn) {
+    const btn = page.locator(sel).last();
+    try {
+      if (await btn.isVisible()) { await btn.click({ timeout: 4000 }); confirmed = true; break; }
+    } catch { /* 试下一个候选 */ }
+  }
+  if (!confirmed) return false;
+  await sleep(1500);
+
+  // 4) 校验声明栏已显示「内容由AI生成」
+  const ok = await page.evaluate(() =>
+    [...document.querySelectorAll('[class*="selectText"],[class*="declaraton"],[class*="controlWrapper"]')]
+      .some((e) => /内容由AI生成/.test(e.innerText || ''))
+  ).catch(() => false);
+  return ok;
+}
+
+/**
  * 发布主流程：进上传页 → 切「发布图文」tab → 上传图片 → 填标题/简介 → 停在发布按钮。
  * 传 cfg.publish 才真正点击发布。返回 { ok, stopped, published, message, screenshot }。
  */
@@ -745,6 +808,19 @@ async function runPublish(page, cfg) {
       else log('⚠️  未能自动选配乐（入口/列表/「使用」按钮 selector 可能已变），将不带配乐继续');
     } catch (e) {
       log(`⚠️  自动配乐异常：${e.message}，将不带配乐继续`);
+    }
+    await sleep(800);
+  }
+
+  // 6.6) 勾选「自主声明 = 内容由AI生成」（默认开启；--no-ai-declare 关闭）。
+  //      AI 生成内容不声明会被判违规/限流，所以失败时给出明确警告（而非静默）。
+  if (cfg.aiDeclare) {
+    try {
+      const ok = await selectAIDeclaration(page, cfg.timeout);
+      if (ok) log('✅ 已勾选自主声明：内容由AI生成');
+      else log('⚠️  未能勾选「内容由AI生成」声明（selector 可能已变）！AI 内容未声明有违规风险，请在窗口内手动选择。');
+    } catch (e) {
+      log(`⚠️  勾选AI声明异常：${e.message}！请在窗口内手动选择「内容由AI生成」。`);
     }
     await sleep(800);
   }
@@ -924,12 +1000,14 @@ async function main() {
     console.log(`   简介: ${preview.replace(/\n/g, ' ')} (${[...cfg.content].length} 字) ${cSrc}`);
     console.log(`   话题: ${cfg.topics.length ? cfg.topics.map((t) => '#' + t).join(' ') + '（追加到简介末尾）' : '(无)'}`);
     console.log(`   配乐: ${cfg.music ? '自动选「推荐」第一首' : '不配乐（--no-music）'}`);
+    console.log(`   自主声明: ${cfg.aiDeclare ? '内容由AI生成' : '不声明（--no-ai-declare）'}`);
     console.log(`   发布行为: ${cfg.publish ? '自动点击发布' : '停在发布按钮（默认，需人工确认）'}`);
     console.log(`   登录态目录: ${cfg.userDataDir}`);
     console.log('\n将执行步骤：'
       + (cfg.willGenerate ? '生成图片 → ' : '')
       + '登录校验 → 进上传页 → 切发布图文 tab → 上传图片 → 填标题/简介 → '
       + (cfg.music ? '选推荐配乐 → ' : '')
+      + (cfg.aiDeclare ? '勾选AI生成声明 → ' : '')
       + (cfg.publish ? '点击发布' : '停在发布按钮并截图'));
     process.exit(0);
   }

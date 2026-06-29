@@ -100,11 +100,7 @@ python scripts/send_feishu_image.py --prompt "测试图" --dry-run
 
 > 💡 **发图建议用 `--as bot`**：发图比发文本多需要上传权限，bot 身份默认就有。即使 `.env` 配的是 `user`，遇到上传权限报错就切到 bot。
 
-更多见 `references/feishu-cli-guide.md`，新手完整链路见 `references/tutorial.md`。
-
-## Prompt 归档
-
-每次成功生图都会自动把 prompt 归档到技能包的 `prompts/` 目录，文件名 `YYYYMMDD-NN.md`（`NN` 为当天序号，从 `01` 起），带 `aspect_ratio` / `provider` / `timestamp` frontmatter。三条通道共用同一命名规则，可用 `--prompt-file prompts/20260628-01.md` 复用归档的 prompt（作生图来源，或推导小红书/抖音的标题/正文）。无需手动管理序号。
+更多见 `references/feishu-cli-guide.md`。
 
 ## 发布到小红书
 
@@ -185,14 +181,7 @@ node scripts/publish_douyin.js \
 node scripts/publish_douyin.js --prompt "水彩风格的猫" --dry-run
 ```
 
-**与小红书的区别**：
-
-- **标题上限 30 字**（小红书 20），同样强校验。
-- **话题**：抖音无独立话题下拉，`--topics` 作为 `#话题` 追加到简介末尾。
-- **自动配乐（默认开启）**：填完简介后自动选「推荐」列表第一首配乐（加 `--no-music` 关闭，失败只警告不阻断发布）。
-- **`--publish` 会强制显示浏览器**：抖音发布在无头模式下会被反自动化拦截（点击后卡在「正在发布」），所以带 `--publish` 时脚本自动切到 headed；默认停在按钮和 `--dry-run` 仍是无头。（小红书无头也能正常发布，这是抖音特有的。）
-- **登录态目录**默认 `~/.image-factory-skill/douyin-profile`（env 覆盖 `DOUYIN_USER_DATA_DIR`）。
-- 标题/简介自动推导逻辑两者一致。
+**与小红书的区别**：标题上限 **30 字**（小红书 20）；抖音无独立话题下拉，`--topics` 作为 `#话题` 追加到简介末尾；登录态目录默认 `~/.image-factory-skill/douyin-profile`。标题/简介自动推导逻辑两者一致。
 
 > ⚠️ **默认不自动发布**：同样停在「发布」按钮并截图，加 `--publish` 才自动点击。首次运行弹窗扫码登录（如需短信验证在窗口内完成）。
 
@@ -211,10 +200,8 @@ image-factory-skill/
 │   ├── send_feishu_image.py       # 编排：生成 + 飞书推送
 │   ├── publish_xiaohongshu.js     # 发布到小红书（Playwright）
 │   └── publish_douyin.js          # 发布到抖音（Playwright）
-├── prompts/                       # 每次生图自动归档的 prompt（YYYYMMDD-NN.md）
 └── references/
     ├── feishu-cli-guide.md        # 飞书 CLI 完整教程
-    ├── tutorial.md                # 生成 + 飞书推送 基础教程
     ├── xiaohongshu-publish-guide.md  # 小红书发布 SOP + selector 维护
     └── douyin-publish-guide.md    # 抖音发布 SOP + selector 维护
 ```

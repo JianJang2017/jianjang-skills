@@ -127,6 +127,18 @@ const SELECTORS = {
     'text=发布成功，',
     '.success-toast',
   ],
+  // 「添加内容类型声明」下拉入口（表单底部，d-select 组件）
+  declareEntry: [
+    'div.d-select-main:has-text("添加内容类型声明")',
+    'div.d-select-wrapper:has-text("添加内容类型声明")',
+    'div.wrapper:has-text("添加内容类型声明")',
+  ],
+  // 下拉里「笔记含AI合成内容」选项（注意是「合成」不是「生成」）
+  declareAIOption: [
+    '.d-grid-item:has-text("笔记含AI合成内容")',
+    'div:has-text("笔记含AI合成内容")',
+    'text=笔记含AI合成内容',
+  ],
 };
 
 // ─── Argument parsing ───────────────────────────────────────────────────────
@@ -145,6 +157,7 @@ function parseArgs() {
     contentFile: null,
     promptFile: null,       // 用于自动推导 title/content（也可作为生图来源）
     topics: [],
+    aiDeclare: true,        // 默认选「内容类型声明=笔记含AI合成内容」；--no-ai-declare 关闭
     publish: false,
     headed: false,
     userDataDir: process.env.XHS_USER_DATA_DIR || DEFAULTS.userDataDir,
@@ -172,6 +185,7 @@ function parseArgs() {
         cfg.topics.push(...args[++i].split(',').map((s) => s.trim().replace(/^#/, '')).filter(Boolean));
         break;
       case '--publish': cfg.publish = true; break;
+      case '--no-ai-declare': cfg.aiDeclare = false; break;
       case '--headed': cfg.headed = true; break;
       case '--user-data-dir': cfg.userDataDir = args[++i]; break;
       case '--screenshot': cfg.screenshot = args[++i]; break;
@@ -216,6 +230,7 @@ function printHelp() {
 可选:
   --topics <a,b,c>         话题，逗号分隔（不带 #，脚本自动加）
   --publish                自动点击发布（默认仅停在发布按钮，等人工确认）
+  --no-ai-declare          不选「笔记含AI合成内容」声明（默认会选，AI内容合规更稳妥）
   --headed                 显示浏览器窗口（首次登录/调试；未登录时自动开启）
   --user-data-dir <目录>   持久化登录态目录（默认 ~/.image-factory-skill/xhs-profile）
   --screenshot <路径>      停手时截图保存路径（默认 /tmp/xhs-publish-<ts>.png）
@@ -285,20 +300,26 @@ function execCommand(command, cmdArgs, timeoutMs) {
   });
 }
 
-/** 兜底：generate-image.js 失败/超时但 codex 已落盘时，捞 sinceTs 之后最新的图复制到 output。 */
+/** 兜底：generate-image.js 失败/超时但 codex 已落盘时，捞 sinceTs 之后最新的图复制到 output。
+ *  注意：codex 把图写在会话子目录 ~/.codex/generated_images/<session>/xxx.png，
+ *  所以必须递归子目录，不能只扫顶层（早期 bug：只扫顶层导致永远捞不到、误报生成失败）。 */
 async function recoverCodexImage(output, sinceTs) {
   let newest = null;
-  let entries;
-  try { entries = await readdir(CODEX_GENERATED_DIR, { withFileTypes: true }); } catch { return null; }
-  for (const ent of entries) {
-    if (!ent.isFile() || !/\.(png|jpe?g|webp)$/i.test(ent.name)) continue;
-    const full = join(CODEX_GENERATED_DIR, ent.name);
-    try {
-      const st = await stat(full);
-      if (st.mtimeMs < sinceTs || st.size < 1024) continue;
-      if (!newest || st.mtimeMs > newest.mtime) newest = { path: full, mtime: st.mtimeMs };
-    } catch { /* skip */ }
+  async function walk(dir) {
+    let entries;
+    try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = join(dir, ent.name);
+      if (ent.isDirectory()) { await walk(full); continue; }
+      if (!ent.isFile() || !/\.(png|jpe?g|webp)$/i.test(ent.name)) continue;
+      try {
+        const st = await stat(full);
+        if (st.mtimeMs < sinceTs || st.size < 1024) continue;
+        if (!newest || st.mtimeMs > newest.mtime) newest = { path: full, mtime: st.mtimeMs };
+      } catch { /* skip */ }
+    }
   }
+  await walk(CODEX_GENERATED_DIR);
   if (!newest) return null;
   try {
     await mkdir(dirname(resolve(output)), { recursive: true });
@@ -655,6 +676,57 @@ async function clickFirst(page, selectors, timeout, label) {
 }
 
 /**
+ * 选「添加内容类型声明 = 笔记含AI合成内容」。AI 生成内容做合规声明更稳妥。
+ * 该控件是 d-select 下拉，位于表单底部：点开下拉 → 选「笔记含AI合成内容」(注意是
+ * 「合成」不是「生成」)。下拉项会渲染在控件下方，故需先把控件滚进视图(viewport 已
+ * 调高到 1400 容纳展开区)。成功返回 true；失败返回 false（调用方仅警告，不阻断发布）。
+ */
+async function selectAIDeclaration(page, timeout) {
+  // 1) 点开「添加内容类型声明」下拉
+  const entry = await firstVisible(page, SELECTORS.declareEntry, 6000);
+  if (!entry) return false;
+  await entry.scrollIntoViewIfNeeded().catch(() => {});
+  await sleep(600);
+  await entry.click({ timeout: 5000 }).catch(() => {});
+  await sleep(1800);
+
+  // 2) 选「笔记含AI合成内容」（先试常规点，失败退回坐标点）
+  let picked = false;
+  for (const sel of SELECTORS.declareAIOption) {
+    const opt = page.locator(sel).first();
+    try {
+      await opt.waitFor({ state: 'attached', timeout: 3000 });
+      await opt.scrollIntoViewIfNeeded().catch(() => {});
+      try {
+        await opt.click({ timeout: 3500 });
+        picked = true; break;
+      } catch {
+        const b = await opt.boundingBox().catch(() => null);
+        if (b) { await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); picked = true; break; }
+      }
+    } catch { /* 试下一个候选 */ }
+  }
+  if (!picked) return false;
+  await sleep(800);
+
+  // 2.5) 关闭下拉浮层：选完若浮层不收起，会盖住发布按钮导致点击失效。
+  //      用 Escape + 点回标题输入框（确定在表单内的安全元素）来收起浮层；
+  //      切忌点屏幕左上角空白——那里是侧边栏导航，会误触跳走整个页面。
+  await page.keyboard.press('Escape').catch(() => {});
+  await sleep(400);
+  const titleBox = await firstVisible(page, SELECTORS.titleInput, 3000);
+  if (titleBox) { await titleBox.click().catch(() => {}); }
+  await sleep(800);
+
+  // 3) 校验声明栏已显示「笔记含AI合成内容」
+  const ok = await page.evaluate(() =>
+    [...document.querySelectorAll('div.d-select-main, div.d-select-wrapper, div.wrapper')]
+      .some((e) => /笔记含AI合成内容/.test(e.innerText || ''))
+  ).catch(() => false);
+  return ok;
+}
+
+/**
  * 发布主流程：导航 → 进图文 tab → 上传图片 → 进编辑页 → 填三要素 → 停在发布按钮。
  * 传 cfg.publish 才真正点击发布。返回 { ok, stopped, published, message }。
  */
@@ -747,6 +819,19 @@ async function runPublish(page, cfg) {
   }
 
   await sleep(1000);
+
+  // 7.5) 选「内容类型声明 = 笔记含AI合成内容」（默认开启；--no-ai-declare 关闭）。
+  //      AI 生成内容做合规声明更稳妥；失败仅警告，不阻断发布。
+  if (cfg.aiDeclare) {
+    try {
+      const ok = await selectAIDeclaration(page, cfg.timeout);
+      if (ok) log('✅ 已选内容类型声明：笔记含AI合成内容');
+      else log('⚠️  未能选「笔记含AI合成内容」声明（selector 可能已变），将不带声明继续');
+    } catch (e) {
+      log(`⚠️  选AI声明异常：${e.message}，将不带声明继续`);
+    }
+    await sleep(800);
+  }
 
   // 8) 定位发布按钮。改版后首选 <xhs-publish-btn>（sticky，常在折叠下方），
   //    需先 scrollIntoView；它可能不被判定为 visible，故用 attached 状态定位。
@@ -943,11 +1028,13 @@ async function main() {
     const preview = cfg.content.length > 80 ? cfg.content.slice(0, 80) + '…' : cfg.content;
     console.log(`   正文: ${preview.replace(/\n/g, ' ')} (${[...cfg.content].length} 字) ${cSrc}`);
     console.log(`   话题: ${cfg.topics.length ? cfg.topics.map((t) => '#' + t).join(' ') : '(无)'}`);
+    console.log(`   内容声明: ${cfg.aiDeclare ? '笔记含AI合成内容' : '不声明（--no-ai-declare）'}`);
     console.log(`   发布行为: ${cfg.publish ? '自动点击发布' : '停在发布按钮（默认，需人工确认）'}`);
     console.log(`   登录态目录: ${cfg.userDataDir}`);
     console.log('\n将执行步骤：'
       + (cfg.willGenerate ? '生成图片 → ' : '')
       + '登录校验 → 进图文 tab → 上传图片 → 填标题/正文/话题 → '
+      + (cfg.aiDeclare ? '选AI合成声明 → ' : '')
       + (cfg.publish ? '点击发布' : '停在发布按钮并截图'));
     process.exit(0);
   }

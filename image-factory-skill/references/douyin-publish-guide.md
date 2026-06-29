@@ -33,13 +33,15 @@ npm run setup:douyin     # = playwright install chromium，装浏览器内核
 
 ## 发布流程（对齐参考仓库 SOP）
 
-`creator.douyin.com` → 点「高清发布」进上传页 → 切「发布图文」tab → 点「上传图文」(filechooser 喂图) → 填「作品标题」(标准 input) → 填「作品简介」(slate contenteditable) → 选配乐(默认「推荐」第一首) → 停在「发布」按钮。
+`creator.douyin.com` → 点「高清发布」进上传页 → 切「发布图文」tab → 点「上传图文」(filechooser 喂图) → 填「作品标题」(标准 input) → 填「作品简介」(slate contenteditable) → 选配乐(默认「推荐」第一首) → 勾选自主声明(默认「内容由AI生成」) → 停在「发布」按钮。
 
 - **首图即封面**：`--image` 的第一张作为封面
 - **标题 ≤ 30 字**：脚本强校验，超限 fail-fast 提示压缩（抖音标题上限比小红书宽）
 - **话题**：抖音没有小红书那种独立话题下拉，`--topics` 会作为 `#话题` **追加到简介末尾**
 - **配乐（默认开启）**：填完简介后自动点「选择音乐」→ 在「推荐」tab → hover 第一首歌曲项 → 点浮现的「使用」。加 `--no-music` 跳过。失败仅警告、不阻断发布。
   - 选择器：入口 `div[class*="container-right"]:has-text("选择音乐")`；歌曲项 `div[class*="song-info"]`；「使用」按钮 `button[class*="apply-btn"]`（**仅 hover 歌曲项时浮现**，故用 `mouse.move` 到歌曲项中心再点）。
+- **自主声明（默认开启，合规关键）**：AI 生成内容必须声明，否则违规/限流。脚本默认勾选「内容由AI生成」：点「请选择自主声明」入口 → 弹窗里选「内容由AI生成」单选 → 点「确定」(选中后才从 disabled 变可点)。加 `--no-ai-declare` 跳过。**失败会明确警告**（漏声明有合规风险），提示在窗口内手动选。
+  - 选择器：入口 `div[class*="controlWrapper"]:has-text("请选择自主声明")`；单选项 `label:has-text("内容由AI生成")`；确认 `button:has-text("确定")`（取 `.last()`，页面可能有多个「确定」）。声明栏出现「内容由AI生成」即成功。
 
 ## 安全规则：默认停在发布按钮
 
@@ -89,6 +91,7 @@ node scripts/publish_douyin.js --prompt "水彩风格的猫" --dry-run
 | 找不到上传入口 | `uploadImageTextBtn` / `uploadFileInput` |
 | 标题/简介填不进 | `titleInput` / `descriptionInput` |
 | 配乐没选上 | `musicEntry` / `musicRecommendTab` / `musicSongItem` / `musicUseBtn`（「使用」按钮 hover 歌曲项才浮现） |
+| AI声明没勾上 | `declareEntry` / `declareAIOption` / `declareConfirmBtn`（「确定」取 `.last()`，选中单选后才可点） |
 | 找不到发布按钮 | `publishContainer`（按钮在容器内按文本「发布」筛） |
 | 误判登录态 | `loggedIn`（务必只认高清发布按钮） |
 
