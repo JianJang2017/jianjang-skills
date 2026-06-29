@@ -1,6 +1,6 @@
 # JianJang Skills
 
-A collection of Claude Code skills covering enterprise development lifecycle, database operations, API documentation, Markdown formatting and illustration, email management, and Lark/Feishu collaboration.
+A collection of Claude Code skills covering enterprise development lifecycle, database operations, API documentation, Markdown formatting and illustration, content-platform publishing, email management, and Lark/Feishu collaboration.
 
 **[中文文档](./README.md)**
 
@@ -15,8 +15,9 @@ A collection of Claude Code skills covering enterprise development lifecycle, da
 | [api-generator-skill](./api-generator-skill) | API doc generation | Scan code and emit Markdown / HTML / Postman Collection, 6 frameworks supported |
 | [markdown-to-html](./markdown-to-html) | Markdown → HTML formatter | 40 themes, fully inline styles, pasteable into WeChat editor or email clients |
 | [markdown-to-feishu-skill](./markdown-to-feishu-skill) | Markdown → Feishu/Lark Wiki | Create wiki node, write body, place local images at their original positions — no missing images |
+| [markdown-post-skill](./markdown-post-skill) | Markdown → content platforms | Drive a logged-in Chrome via Playwright to publish to Juejin / Feifan, auto-upload local images to platform CDN |
 | [article-illustration-tools](./article-illustration-tools) | Auto-illustrate articles | Analyze structure, recommend image slots, call Codex / Antigravity to generate and insert images |
-| [image-factory-skill](./image-factory-skill) | AI image → Feishu push | One-line prompt → generate image → push to selected Feishu users/chats in parallel |
+| [image-factory-skill](./image-factory-skill) | AI image + multi-channel publishing + prompt engineering | One-line prompt → image → Feishu / Xiaohongshu / Douyin; reverse / optimize / portrait prompts |
 | [enterprise-email-manager](./enterprise-email-manager) | Corporate email automation | IMAP/SMTP backup, deletion, organization, bulk send |
 
 ---
@@ -97,7 +98,24 @@ Upload this Markdown to the Feishu wiki and keep the images
 Archive this article (with images) into the knowledge base
 ```
 
-### 6. article-illustration-tools — Auto-Illustrate Articles
+### 6. markdown-post-skill — Publish Markdown to Content Platforms
+
+Publishes a local Markdown article to content platforms (currently **Juejin** `juejin.cn` and the iFlytek-internal **Feifan** `feifan.iflytek.com`). These platforms have no public API — only a browser path works. This skill solves the two hard parts:
+
+- **Reuse the login session**: Playwright `connect_over_cdp` attaches to the user's already-logged-in Chrome and inherits account / cookies / SSO; if CDP is unavailable, it falls back to a persistent Playwright chromium profile
+- **Local images**: each local image is uploaded to the platform's own CDN before the body is written, then the markdown links are rewritten
+- **Frontmatter prefill**: category / tags / cover / summary are auto-filled
+- **Draft by default**: the script writes the body, uploads images, prefills metadata, then stops and hands the URL back so the user can review before clicking publish — content publication is one-way, so a human gate is worth it
+- Platform support: macOS / Windows (Linux clipboard branch not yet implemented)
+
+```
+Save this md as a Juejin draft
+Sync to Feifan, use cover.png as the cover
+```
+
+Dependencies: `playwright>=1.40`, Python ≥ 3.9.
+
+### 7. article-illustration-tools — Auto-Illustrate Articles
 
 An AI tool that auto-illustrates Markdown articles.
 
@@ -108,20 +126,34 @@ An AI tool that auto-illustrates Markdown articles.
 
 Triggers: "illustrate article", "add images to article", "generate article images"
 
-### 7. image-factory-skill — AI Image → Feishu Push
+### 8. image-factory-skill — AI Image + Multi-Channel Publishing + Prompt Engineering
 
-One-line description → generate image → push to a Feishu user or chat. Image, caption, and the generating prompt are combined into a **single** rich-text message; with multiple targets the image is uploaded once and sent concurrently.
+A one-stop AI image tool with three groups of capabilities:
 
-- Backends: codex-cli or agy (Antigravity CLI)
-- Recipients configured in `.env` via `FEISHU_USER_IDS` / `FEISHU_CHAT_IDS`
-- Dependency: `lark-cli`
+**A. Generate and publish**
+- **Feishu**: one-line prompt → image → push to Feishu user / chat; image, caption, and the generating prompt become a **single** rich-text message; with multiple targets, the image is uploaded once and sent concurrently
+- **Xiaohongshu (RedNote)**: auto-publish as an image-text note (title / body / hashtags / multiple images) via a persistent Playwright browser session
+- **Douyin**: auto-publish as a Douyin image-text post (title / body / hashtags / multiple images) via a persistent Playwright browser session
+
+**B. Prompt engineering (powered by codex-cli / agy)**
+- **Reverse a prompt from an image**: input an image → derive a reusable text-to-image prompt
+- **Optimize a prompt**: rewrite an existing prompt under a style preset (hand-drawn / blueprint / watercolor / cyberpunk / 3D / healing / minimal / photo / gufeng-portrait / photo-portrait)
+- **Portrait prompt from scratch**: one-line subject → structured character-portrait prompt with style / camera / lighting / quality / negative terms
+
+**C. Shared**
+- Backends: codex-cli or agy (Antigravity CLI), auto-detected
+- Feishu recipients configured in `.env` via `FEISHU_USER_IDS` / `FEISHU_CHAT_IDS`
+- Dependencies: `lark-cli` (Feishu), `playwright` (Xiaohongshu / Douyin)
 
 ```
 Generate a tech-style system architecture diagram and send it to Zhang San
 Send the R&D group a hand-drawn product roadmap with caption "Q2 sketch"
+Reverse this image into a prompt
+Write me a gufeng portrait prompt: a girl with an umbrella in a Jiangnan rainy alley
+Generate a healing-style kitten and publish it as a Xiaohongshu note
 ```
 
-### 8. enterprise-email-manager — Corporate Email Manager
+### 9. enterprise-email-manager — Corporate Email Manager
 
 IMAP/SMTP-based email automation toolkit.
 
@@ -144,6 +176,7 @@ cp -r database-tools-skills ~/.claude/skills/
 cp -r api-generator-skill ~/.claude/skills/
 cp -r markdown-to-html ~/.claude/skills/
 cp -r markdown-to-feishu-skill ~/.claude/skills/
+cp -r markdown-post-skill ~/.claude/skills/
 cp -r article-illustration-tools ~/.claude/skills/
 cp -r image-factory-skill ~/.claude/skills/
 cp -r enterprise-email-manager ~/.claude/skills/
@@ -155,6 +188,10 @@ cp -r enterprise-email-manager ~/.claude/skills/
 # Database
 pip install psycopg2-binary    # PostgreSQL
 pip install pymysql            # MySQL
+
+# Browser automation (markdown-post-skill, image-factory-skill's Xiaohongshu/Douyin)
+pip install "playwright>=1.40"
+playwright install chromium
 
 # Feishu/Lark (for markdown-to-feishu-skill, image-factory-skill)
 npx @larksuite/cli@latest install
@@ -178,8 +215,10 @@ Each skill ships a `.env.example` — copy it to `.env` and fill in the values. 
 | Generate API docs at delivery time | api-generator-skill |
 | Format a Markdown article for WeChat or email | markdown-to-html |
 | Archive a Markdown article into Feishu wiki | markdown-to-feishu-skill |
+| Publish a Markdown article to Juejin / Feifan | markdown-post-skill |
 | Auto-illustrate a long-form article | article-illustration-tools |
-| Generate a quick image and ship it to Feishu | image-factory-skill |
+| Push a quick image to Feishu / Xiaohongshu / Douyin | image-factory-skill |
+| Reverse / optimize / craft portrait prompts | image-factory-skill |
 | Bulk email backup / send | enterprise-email-manager |
 
 ---
