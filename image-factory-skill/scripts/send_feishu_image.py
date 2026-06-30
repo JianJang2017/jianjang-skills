@@ -297,6 +297,70 @@ def generate_image(prompt, output, aspect_ratio="16:9", provider="auto", verbose
             pass
 
 
+def _parse_last_json(text):
+    """从一段输出里取最后一个 JSON 对象行（generate-image.js 末行是机器可读 JSON）。"""
+    for line in reversed((text or "").strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                return json.loads(line)
+            except ValueError:
+                continue
+    return None
+
+
+def generate_images(prompt, output, count, aspect_ratio="16:9", provider="auto", verbose=True):
+    """生成 N 张图（同一个 prompt，-n 张不同的图）。返回 (ok, paths_or_msg)。
+
+    count<=1 时退回单图 generate_image（保留 codex 兜底）。count>1 时调
+    generate-image.js --count N，解析末行 JSON 的 outputs 拿到全部产物路径。
+    只要至少有一张成功即视为成功，paths 为成功列表。
+    """
+    if count <= 1:
+        ok, res = generate_image(prompt, output, aspect_ratio, provider, verbose)
+        return (ok, [res] if ok else res)
+
+    if not os.path.exists(GENERATE_IMAGE_JS):
+        return False, f"找不到图片生成脚本: {GENERATE_IMAGE_JS}"
+
+    prompt_fd, prompt_file = tempfile.mkstemp(suffix=".md", prefix="feishu-prompt-")
+    try:
+        with os.fdopen(prompt_fd, "w", encoding="utf-8") as f:
+            f.write(f'---\naspect_ratio: "{aspect_ratio}"\n---\n\nPROMPT:\n{prompt}\n')
+
+        cmd = [
+            "node", GENERATE_IMAGE_JS,
+            "--prompt-file", prompt_file,
+            "--output", output,
+            "--aspect-ratio", aspect_ratio,
+            "--provider", provider,
+            "--count", str(count),
+        ]
+        if verbose:
+            print(f"🎨 生成 {count} 张图片中... (provider={provider}, ar={aspect_ratio})")
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        data = _parse_last_json(result.stdout)
+        outputs = [p for p in (data.get("outputs") if data else []) if p and os.path.exists(p)]
+
+        if outputs:
+            # 归档一次 prompt（N 张共用同一 prompt）
+            archived = archive_prompt(prompt, aspect_ratio, provider)
+            if archived and verbose:
+                print(f"📝 Prompt 已归档: {os.path.basename(archived)}")
+            if len(outputs) < count and verbose:
+                print(f"⚠️  请求 {count} 张，实际成功 {len(outputs)} 张，继续用已成功的图发送。")
+            return True, outputs
+
+        tail = (result.stderr or result.stdout).strip()[-300:]
+        return False, f"图片生成失败（{count} 张均未产出）: {tail}"
+    finally:
+        try:
+            os.remove(prompt_file)
+        except OSError:
+            pass
+
+
 def upload_image(image_path, identity="bot", dry_run=False):
     """把本地图片上传一次，拿到可复用的 image_key（img_xxx）。返回 (ok, key_or_msg)。
 
@@ -328,14 +392,41 @@ def upload_image(image_path, identity="bot", dry_run=False):
     return True, key
 
 
-def _build_post_content(image_key, caption=None, prompt=None):
-    """构造 post 富文本：一条消息里同时含图片 + 可复制的配文/prompt。
+def _build_post_content(image_keys, caption=None, prompt=None, copywriting=None, tags=None):
+    """构造 post 富文本：一条消息里同时含 N 张图片 + 可复制的文案/标签/prompt。
 
-    Feishu post 文本默认就是可选中复制的——把完整 prompt 作为一行文本放进去，
-    用户长按即可复制。content 是「段落数组」，每段是「元素数组」。
+    Feishu post 文本默认就是可选中复制的——飞书没有"一键复制按钮"的原生能力，
+    所以这里把要复制的内容各自做成独立连续段落，用户长按某段即可整段全选复制。
+    content 是「段落数组」，每段是「元素数组」。
+    image_keys 可以是单个字符串或字符串列表；多图时每张图各占一段，依次排列。
+
+    段落顺序（自媒体发布友好）：
+      [N 张图] → [📋 文案+标签合并段（最易整体复制）] → [📝 Prompt 段]
+    文案与标签放在 prompt 上方，且合并成一个连续段落，方便长按一次性复制去发帖。
     """
     title = caption if caption else "🎨 AI 生成图片"
-    content = [[{"tag": "img", "image_key": image_key}]]
+    if isinstance(image_keys, str):
+        image_keys = [image_keys]
+    content = [[{"tag": "img", "image_key": k}] for k in image_keys]
+
+    # 自媒体文案 + 标签：合并成一个独立段落，放在 prompt 上方。
+    # 标签统一加 # 前缀，多个空格分隔，拼到文案末尾，让"文案+话题"成为一个
+    # 可长按整体复制的连续文本块（飞书无复制按钮，连续段落是最接近一键复制的体验）。
+    if copywriting or tags:
+        parts = []
+        if copywriting:
+            parts.append(copywriting.strip())
+        if tags:
+            tag_line = " ".join(
+                t if t.startswith("#") else f"#{t}"
+                for t in (tags if isinstance(tags, list) else split_csv(tags))
+            )
+            if tag_line:
+                parts.append(tag_line)
+        merged = "\n".join(parts)
+        if merged:
+            content.append([{"tag": "text", "text": f"📋 文案（长按复制）:\n{merged}"}])
+
     if prompt:
         content.append([{"tag": "text", "text": f"📝 Prompt: {prompt}"}])
     return {"zh_cn": {"title": title, "content": content}}
@@ -382,30 +473,39 @@ def hint_for_error(msg):
     return None
 
 
-def send_to_targets(image_path, user_ids, chat_ids, caption=None, prompt=None,
-                    identity="bot", dry_run=False):
-    """发送图片（图+可复制 prompt 合一）给多个目标。返回结果列表。
+def send_to_targets(image_paths, user_ids, chat_ids, caption=None, prompt=None,
+                    copywriting=None, tags=None, identity="bot", dry_run=False):
+    """发送图片（N 张图 + 文案/标签 + 可复制 prompt 合一）给多个目标。返回结果列表。
+
+    image_paths 可以是单个路径或路径列表。多图时合成一条 post 消息（一条多图）。
 
     优化点：
-      1. 图片只上传一次，image_key 复用到所有目标（省 N-1 次上传）。
-      2. 图片与配文/prompt 合成一条 post 消息（省一半发送请求）。
+      1. 每张图只上传一次，image_key 复用到所有目标（省 N_target-1 次上传/张）。
+      2. N 张图 + 配文/prompt 合成一条 post 消息（省一半发送请求）。
       3. 多目标并发发送（用线程池，网络 IO 型，吃满并发）。
     """
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
+
     targets = [(uid, "user") for uid in user_ids] + [(cid, "chat") for cid in chat_ids]
     if not targets:
         return []
 
-    # 1) 上传一次拿 key（图片接口 bot-only，与发送身份无关）
-    up_ok, key_or_err = upload_image(image_path, identity=identity, dry_run=dry_run)
-    if not up_ok:
-        print(f"  ❌ 图片上传失败: {key_or_err}")
-        hint = hint_for_error(key_or_err)
-        if hint:
-            print(f"      💡 {hint}")
-        return [{"target": t, "type": ty, "ok": False, "message": key_or_err}
-                for t, ty in targets]
+    # 1) 每张图各上传一次拿 key（图片接口 bot-only，与发送身份无关）
+    image_keys = []
+    for img in image_paths:
+        up_ok, key_or_err = upload_image(img, identity=identity, dry_run=dry_run)
+        if not up_ok:
+            print(f"  ❌ 图片上传失败 ({os.path.basename(img)}): {key_or_err}")
+            hint = hint_for_error(key_or_err)
+            if hint:
+                print(f"      💡 {hint}")
+            return [{"target": t, "type": ty, "ok": False, "message": key_or_err}
+                    for t, ty in targets]
+        image_keys.append(key_or_err)
 
-    content = _build_post_content(key_or_err, caption=caption, prompt=prompt)
+    content = _build_post_content(image_keys, caption=caption, prompt=prompt,
+                                  copywriting=copywriting, tags=tags)
 
     # 2) 并发发送同一条 post 到所有目标
     def _one(target):
@@ -451,13 +551,18 @@ def main():
     parser.add_argument("--prompt", help="图片生成提示词（与 --image 二选一）")
     parser.add_argument("--prompt-file", dest="prompt_file",
                         help="prompt markdown 文件；用于生成图片，或在 --image 模式下附为可复制文本")
-    parser.add_argument("--image", help="已有图片路径（提供则跳过生成）")
+    parser.add_argument("--image", help="已有图片路径（提供则跳过生成）；多张用逗号分隔，合成一条多图消息")
     parser.add_argument("--user-ids", help="接收用户 open_id，逗号分隔（覆盖 .env）")
     parser.add_argument("--chat-ids", help="接收群聊 chat_id，逗号分隔（覆盖 .env）")
     parser.add_argument("--caption", help="随图发送的配文（作为 post 标题）")
+    parser.add_argument("--copywriting", "--copy", dest="copywriting",
+                        help="自媒体平台文案正文，随图附在 prompt 上方（独立段落，方便长按整体复制去发帖）")
+    parser.add_argument("--tags", help="自媒体标签，逗号分隔（自动加 #），拼到文案末尾一起发")
     parser.add_argument("--no-prompt-caption", action="store_true",
                         help="不要把生成 prompt 作为可复制文本附在图片消息里")
     parser.add_argument("--aspect-ratio", default="16:9", help="图片宽高比，默认 16:9")
+    parser.add_argument("--count", "-n", type=int, default=1,
+                        help="同一个 prompt 生成 N 张不同的图，合成一条多图消息发送（默认 1）")
     parser.add_argument("--provider", default="auto", choices=["auto", "codex", "gemini"],
                         help="图片生成后端，默认 auto")
     parser.add_argument("--output", help="生成图片的保存路径（默认临时文件）")
@@ -496,33 +601,41 @@ def main():
 
     identity = args.identity or config["feishu_send_as"]
 
-    # 1) 获取图片
+    # 1) 获取图片（image_paths 始终是列表）
     if args.image:
-        image_path = args.image
-        if not os.path.exists(image_path):
-            print(f"\n❌ 图片不存在: {image_path}")
+        image_paths = split_csv(args.image)
+        missing = [p for p in image_paths if not os.path.exists(p)]
+        if missing:
+            print(f"\n❌ 图片不存在: {', '.join(missing)}")
             sys.exit(1)
-        print(f"\n📁 使用已有图片: {image_path}")
+        print(f"\n📁 使用已有图片: {len(image_paths)} 张")
     else:
+        count = max(1, args.count or 1)
         output = args.output or os.path.join(
             tempfile.gettempdir(),
             f"feishu-image-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png",
         )
         print()
-        ok, result = generate_image(prompt_text, output, args.aspect_ratio, args.provider)
+        ok, result = generate_images(prompt_text, output, count, args.aspect_ratio, args.provider)
         if not ok:
             print(f"\n❌ {result}")
             sys.exit(1)
-        image_path = result
-        size_kb = os.path.getsize(image_path) // 1024
-        print(f"✅ 图片已生成: {image_path} ({size_kb} KB)")
+        image_paths = result
+        total_kb = sum(os.path.getsize(p) for p in image_paths) // 1024
+        print(f"✅ 已生成 {len(image_paths)} 张图片 (共 {total_kb} KB)")
+        for p in image_paths:
+            print(f"   - {p}")
 
     # 2) 发送
     total = len(user_ids) + len(chat_ids)
     print(f"\n📤 推送到 → {len(user_ids)} 个用户 + {len(chat_ids)} 个群聊 "
-          f"（身份: {identity}）{'（预览模式）' if args.dry_run else ''}")
+          f"（身份: {identity}，{len(image_paths)} 张图）{'（预览模式）' if args.dry_run else ''}")
     if args.caption:
         print(f"   配文: {args.caption}")
+    if args.copywriting:
+        print(f"   文案: {args.copywriting[:50] + '…' if len(args.copywriting) > 50 else args.copywriting}")
+    if args.tags:
+        print(f"   标签: {' '.join('#' + t for t in split_csv(args.tags))}")
 
     # 把生成 prompt 作为可复制文本附在图片消息里（除非显式 --no-prompt-caption）。
     # prompt_text 来自 --prompt 或 --prompt-file，因此 --image 直发也能附带 prompt。
@@ -530,15 +643,18 @@ def main():
 
     if args.dry_run:
         print(f"\n🔍 调试信息:")
-        print(f"   图片路径: {image_path}")
+        print(f"   图片路径({len(image_paths)}): {', '.join(image_paths)}")
         print(f"   配文: {args.caption or '(无)'}")
+        print(f"   文案: {args.copywriting or '(无)'}")
+        print(f"   标签: {' '.join('#' + t for t in split_csv(args.tags)) if args.tags else '(无)'}")
         print(f"   Prompt文本: {attach_prompt[:100] + '...' if attach_prompt and len(attach_prompt) > 100 else attach_prompt or '(无)'}")
         print(f"   --prompt-file: {args.prompt_file or '(未提供)'}")
         print(f"   --no-prompt-caption: {args.no_prompt_caption}")
     print()
 
-    results = send_to_targets(image_path, user_ids, chat_ids,
+    results = send_to_targets(image_paths, user_ids, chat_ids,
                               caption=args.caption, prompt=attach_prompt,
+                              copywriting=args.copywriting, tags=args.tags,
                               identity=identity, dry_run=args.dry_run)
 
     # 3) 汇总

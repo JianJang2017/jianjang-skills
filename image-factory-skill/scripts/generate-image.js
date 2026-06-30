@@ -10,10 +10,14 @@
  *  - Auto-locates images written to backend-specific dirs and copies to --output
  *  - Per-image timeout + retry
  *  - Optional batch mode: --batch with multiple --prompt-file/--output pairs
- *  - Concurrency cap for batch mode (--concurrency, default 3)
+ *  - Count mode: --count/-n N generates N distinct images from ONE prompt
+ *    (codex/agy are non-deterministic, so N runs of the same prompt yield N
+ *     different images; outputs are suffixed -1..-N off --output)
+ *  - Concurrency cap for batch/count mode (--concurrency, default 3)
  *
  * Usage:
  *   generate-image.js --prompt-file p.md --output a.png [--ar 16:9] [--provider auto|codex|gemini]
+ *   generate-image.js --prompt-file p.md --output a.png -n 3   # → a-1.png a-2.png a-3.png
  *   generate-image.js --batch tasks.json [--concurrency 3]
  *
  * batch tasks.json: [{"prompt-file":"p1.md","output":"a.png","aspect-ratio":"16:9"}, ...]
@@ -21,7 +25,7 @@
 
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, stat, readdir, mkdir } from 'node:fs/promises';
-import { resolve, dirname, basename, join } from 'node:path';
+import { resolve, dirname, basename, join, extname } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -52,6 +56,7 @@ function parseArgs() {
     timeoutMs: DEFAULTS.timeoutMs,
     retries: DEFAULTS.retries,
     concurrency: DEFAULTS.concurrency,
+    count: 1,
     batch: null,
   };
   for (let i = 0; i < args.length; i++) {
@@ -64,6 +69,7 @@ function parseArgs() {
       case '--timeout': cfg.timeoutMs = parseInt(args[++i], 10) * 1000; break;
       case '--retries': cfg.retries = parseInt(args[++i], 10); break;
       case '--concurrency': cfg.concurrency = parseInt(args[++i], 10); break;
+      case '--count': case '-n': cfg.count = Math.max(1, parseInt(args[++i], 10) || 1); break;
       case '--batch': cfg.batch = args[++i]; break;
       case '--help': case '-h': showHelp(); process.exit(0);
       default:
@@ -77,10 +83,23 @@ function parseArgs() {
   return cfg;
 }
 
+/**
+ * Insert an index suffix before the file extension:
+ *   suffixOutput('cover.png', 2) → 'cover-2.png'
+ *   suffixOutput('out', 3)       → 'out-3'
+ * Used by --count mode so N images from one prompt get predictable, sortable names.
+ */
+function suffixOutput(output, index) {
+  const ext = extname(output);
+  const base = ext ? output.slice(0, -ext.length) : output;
+  return `${base}-${index}${ext}`;
+}
+
 function showHelp() {
   console.log(`
 Usage:
   generate-image.js --prompt-file <p.md> --output <out.png> [options]
+  generate-image.js --prompt-file <p.md> --output <out.png> --count 3   # 3 images: out-1.png..out-3.png
   generate-image.js --batch <tasks.json> [--concurrency N]
 
 Options:
@@ -88,9 +107,11 @@ Options:
   --prompt-file <path>                 Prompt markdown file
   --output, -o <path>                  Output image path (verified after generation)
   --aspect-ratio, --ar <W:H>           Aspect ratio (default: 16:9)
+  --count, -n <N>                      Generate N distinct images from ONE prompt
+                                       (outputs suffixed -1..-N off --output; default: 1)
   --timeout <seconds>                  Per-image timeout (default: 300)
   --retries <n>                        Retries on failure (default: 1)
-  --concurrency <n>                    Parallel batch jobs (default: 3)
+  --concurrency <n>                    Parallel batch/count jobs (default: 3)
   --batch <tasks.json>                 JSON array of {prompt-file, output, aspect-ratio?}
   --help, -h                           Show this help
 
@@ -432,6 +453,17 @@ async function main() {
       if (!t.promptFile || !t.output) throw new Error('Each batch task needs prompt-file and output');
     }
     console.log(`Batch mode: ${tasks.length} tasks, concurrency=${cfg.concurrency}`);
+  } else if (cfg.count > 1) {
+    // Count mode: N distinct images from ONE prompt. Same prompt-file/aspect-ratio,
+    // distinct suffixed outputs (-1..-N). codex/agy are non-deterministic, so each
+    // run yields a different image; CLAIMED_CODEX_SOURCES keeps concurrent codex
+    // runs from copying the same source file.
+    tasks = Array.from({ length: cfg.count }, (_, idx) => ({
+      promptFile: cfg.promptFile,
+      output: suffixOutput(cfg.output, idx + 1),
+      aspectRatio: cfg.aspectRatio,
+    }));
+    console.log(`Count mode: ${cfg.count} images from one prompt, concurrency=${cfg.concurrency}`);
   } else {
     tasks = [{ promptFile: cfg.promptFile, output: cfg.output, aspectRatio: cfg.aspectRatio }];
   }
@@ -442,7 +474,7 @@ async function main() {
     timeoutMs: cfg.timeoutMs,
     retries: cfg.retries,
     concurrency: cfg.concurrency,
-    verbose: !cfg.batch, // quieter in batch mode
+    verbose: !cfg.batch && cfg.count === 1, // quieter in batch/count mode
   };
 
   const results = tasks.length === 1
@@ -455,9 +487,12 @@ async function main() {
   console.log(`\n──────────────────────────────────────────`);
   console.log(`Summary: ${ok} succeeded, ${fail} failed (out of ${results.length})`);
 
-  // Final JSON line for programmatic consumers (always last line of stdout)
+  // Final JSON line for programmatic consumers (always last line of stdout).
+  // `outputs` is the flat list of successfully generated image paths — the
+  // multi-image publish channels consume this directly.
   const exitOk = fail === 0;
-  console.log(JSON.stringify({ success: exitOk, count: results.length, succeeded: ok, failed: fail, results }));
+  const outputs = results.filter(r => r.ok).map(r => r.output);
+  console.log(JSON.stringify({ success: exitOk, count: results.length, succeeded: ok, failed: fail, outputs, results }));
   process.exit(exitOk ? 0 : 1);
 }
 

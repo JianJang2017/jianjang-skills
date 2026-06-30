@@ -1,7 +1,7 @@
 ---
 name: image-factory-skill
 description: Generate AI images from prompts and either send them to Feishu (Lark) users/group chats via lark-cli, OR publish them as Xiaohongshu (RedNote/小红书) image-text notes, OR publish them as Douyin (抖音) image-text posts — both via persistent Playwright browser sessions. ALSO supports reverse-engineering a generation prompt from an existing image, optimizing an existing prompt by style preset, AND generating character portrait prompts from scratch (subject + style preset → ready-to-use portrait prompt with camera/lighting/quality terms), all via codex-cli / agy. Use when user asks to "generate an image and send to Feishu", "create image and push to lark", "生成图片并发送到飞书", "给某某发一张图", "发布到小红书", "发一篇小红书笔记", "publish to xiaohongshu / rednote", "发布到抖音", "发一篇抖音图文", "publish to douyin", OR when user wants to "反推 prompt", "看图猜 prompt", "reverse prompt from image", "image to prompt", "把这张图变成 prompt", "优化 prompt", "改写 prompt", "polish prompt", "optimize image prompt", OR "生成人物图 prompt", "写一条人物写真 prompt", "generate portrait prompt", "character prompt from subject", "古风人物提示词", or wants to push AI-generated images to Feishu/Xiaohongshu/Douyin OR turn an image back into a reusable text-to-image prompt OR restructure a rough prompt under a specific style preset (hand-drawn / blueprint / watercolor / cyberpunk / 3d / healing / minimal / photo / gufeng-portrait / photo-portrait) OR create a ready-to-use character portrait prompt from a simple subject description (one-liner → structured prompt with style/camera/lighting/quality/negative).
-version: 1.4.0
+version: 1.5.0
 ---
 
 # Image Factory Skill
@@ -82,6 +82,19 @@ node scripts/generate-image.js \
   --provider auto
 ```
 
+**Generate N distinct images from ONE prompt (--count/-n):**
+
+```bash
+node scripts/generate-image.js \
+  --prompt-file <temp-prompt.md> \
+  --output <base.png> \
+  --count 3
+# → base-1.png, base-2.png, base-3.png
+```
+
+The same prompt run N times produces N different images (codex/agy are non-deterministic).
+Outputs are suffixed `-1..-N` off the base `--output` path.
+
 **The script:**
 - Auto-detects available backends (codex-cli or agy)
 - Supports two providers:
@@ -89,6 +102,7 @@ node scripts/generate-image.js \
   - **gemini (agy)**: Google Antigravity CLI
 - Includes timeout (5 min) and retry (1 attempt)
 - Verifies output file exists after generation
+- **Count mode**: generates N images concurrently (bounded by `--concurrency`, default 3)
 
 **Prompt format:**
 
@@ -122,9 +136,26 @@ python scripts/send_feishu_image.py \
   --as bot
 ```
 
+**Send multiple images as one message:**
+
+```bash
+# Pre-generated images (comma-separated)
+python scripts/send_feishu_image.py \
+  --image "a.png,b.png,c.png" \
+  --user-ids "ou_xxx"
+
+# Generate N images from one prompt, send as one multi-image message
+python scripts/send_feishu_image.py \
+  --prompt "手绘风格的系统架构图" \
+  --count 3 \
+  --user-ids "ou_xxx"
+```
+
 **The script handles:**
-- Sending image to multiple users/chats (uploaded once, sent to all in parallel)
-- Combining image + caption + copyable prompt into a single rich-text `post` message
+- Generating N images from one prompt with `--count` (outputs suffixed -1..-N)
+- Sending multiple images (N img blocks) in a single rich-text `post` message
+- Uploading each image once, sending to all targets concurrently
+- Combining image(s) + caption + copyable prompt into one message
 - Working around lark-cli's path restrictions (uses relative paths with cwd)
 - Identity selection (bot vs user)
 - Detailed success/failure reporting per target
@@ -257,6 +288,12 @@ node scripts/publish_xiaohongshu.js \
   --prompt "赛博朋克风格的城市夜景，霓虹灯牌林立" \
   --topics "AI,赛博朋克"
 
+# Generate N different images from one prompt, publish as one multi-image note
+node scripts/publish_xiaohongshu.js \
+  --prompt "手绘风格的系统架构图" \
+  --count 3 \
+  --topics "AI,架构"
+
 # Same, with generation knobs + your own title, auto-publish
 node scripts/publish_xiaohongshu.js \
   --prompt "水彩风格的猫躺在窗台" \
@@ -266,9 +303,17 @@ node scripts/publish_xiaohongshu.js \
 
 Generation flags (only used when generating, i.e. no `--image`):
 `--provider auto|codex|gemini`, `--aspect-ratio` (default `3:4`, vertical for
-XHS), `--output` (defaults to a temp file). If generation fails/times out but
-codex already wrote the image, the script recovers it from
+XHS), `--count`/`-n` (generate N distinct images from one prompt → one
+multi-image note), `--output` (defaults to a temp file). If generation
+fails/times out but codex already wrote the image, the script recovers it from
 `~/.codex/generated_images/` — same fallback as the Feishu orchestrator.
+
+> **Multi-image timeout & recovery:** with `--count N`, the per-image timeout
+> budget scales to `5min × N` so the generator isn't SIGKILL'd before it prints
+> its final JSON. Even if the JSON is lost (process killed, stdout truncated),
+> the publisher falls back to scanning the `-1..-N` suffixed output paths on
+> disk, so already-generated images are still published. Stops gracefully with
+> whatever succeeded if fewer than N images land.
 
 ### One-Time Setup
 
@@ -296,6 +341,13 @@ On the first publish there's no saved session:
 xiaohongshu-ops's safety rule ("stop at the publish page, wait for user
 confirmation") and prevents accidental posting. Pass `--publish` to actually
 click publish.
+
+> **Stop mode keeps the window open.** When stopping at the button (no
+> `--publish`), the script forces a **headed (visible) browser** and keeps it
+> open until you close it yourself — it does NOT auto-close after a few seconds.
+> Review the filled content in the window, click 「发布」 manually, then close the
+> window and the script exits. (Earlier the window was headless / closed after
+> 1.5s, so it flashed by before you could act — fixed.)
 
 ```bash
 # Default: fill everything, stop at the publish button (recommended)
@@ -419,6 +471,12 @@ the script checks the success toast).
 ```bash
 # One shot: prompt → image → derived title/description → publish page (stops)
 node scripts/publish_douyin.js --prompt "赛博朋克风格的城市夜景" --topics "AI,夜景"
+
+# Generate N different images from one prompt, publish as one multi-image post
+node scripts/publish_douyin.js \
+  --prompt "手绘风格的部署流程图" \
+  --count 3 \
+  --topics "AI,架构"
 
 # Existing image + explicit copy
 node scripts/publish_douyin.js \
@@ -745,14 +803,19 @@ python scripts/send_feishu_image.py \
 |----------|-------------|---------|
 | `--prompt` | Image generation prompt (required if `--image`/`--prompt-file` not provided) | - |
 | `--prompt-file` | Prompt markdown file; used to generate, OR attached as copyable text in `--image` mode | - |
-| `--image` | Pre-generated image path (skips generation) | - |
+| `--image` | Pre-generated image path(s); comma-separated for multi-image (skips generation) | - |
+| `--count`, `-n` | Generate N distinct images from one prompt, send as one multi-image message | 1 |
 | `--user-ids` | Comma-separated user open_ids (ou_xxx) | From `.env` |
-| `--chat-ids` | Comma-separated group chat_ids (oc_xxx) | From `.env` |
+| `--chat-ids` | Comma-separated group chat_ids (oc_xxx). Pass `--chat-ids ""` to send to users only (overrides `.env`) | From `.env` |
 | `--caption` | Title line of the image message | "🎨 AI 生成图片" |
+| `--copywriting`, `--copy` | Social-media post copy, attached as a standalone paragraph above the prompt (long-press to copy whole) | - |
+| `--tags` | Social-media tags, comma-separated (auto-prefixed with `#`), appended to the copy paragraph | - |
 | `--no-prompt-caption` | Don't attach the generation prompt as copyable text | False |
 | `--aspect-ratio` | Image aspect ratio (e.g., 16:9, 1:1, 4:3) | 16:9 |
 | `--as` | Send identity: `bot` or `user` | From `.env` (default: bot) |
 | `--dry-run` | Preview without actually sending | False |
+
+**Message layout** (paragraphs, social-media friendly): `[N images] → [📋 copy + tags, one standalone paragraph] → [📝 Prompt]`. Feishu has no native "copy button" for post messages, so the copy+tags are merged into one continuous paragraph — long-press it in Feishu to select & copy the whole block in one go. (An interactive-card code block *does* expose a copy button, but renders in monospace like a code box; the merged-paragraph approach was chosen for natural styling.)
 
 **Exit codes:**
 - `0`: All targets succeeded

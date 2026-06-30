@@ -28,7 +28,7 @@
 // NOTE: playwright is imported lazily inside main() (dynamic import) so that
 // --dry-run / --help / arg-validation work even before the package is installed.
 import { readFile, writeFile, mkdir, access, readdir, stat, copyFile, unlink } from 'node:fs/promises';
-import { resolve, join, dirname } from 'node:path';
+import { resolve, join, dirname, extname } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 
@@ -164,6 +164,7 @@ function parseArgs() {
     provider: 'auto',       // 生图后端 auto|codex|gemini
     aspectRatio: '3:4',     // 生图宽高比（抖音图文竖图友好，默认 3:4）
     output: null,           // 生成图片保存路径（缺省用临时文件）
+    count: 1,               // 同一 prompt 生成 N 张不同图，作为一条多图图文发布
     title: null,
     content: null,
     contentFile: null,
@@ -189,6 +190,7 @@ function parseArgs() {
       case '--provider': cfg.provider = args[++i]; break;
       case '--aspect-ratio': case '--ar': cfg.aspectRatio = args[++i]; break;
       case '--output': case '-o': cfg.output = args[++i]; break;
+      case '--count': case '-n': cfg.count = Math.max(1, parseInt(args[++i], 10) || 1); break;
       case '--title': case '-t': cfg.title = args[++i]; break;
       case '--content': case '-c': cfg.content = args[++i]; break;
       case '--content-file': cfg.contentFile = args[++i]; break;
@@ -232,6 +234,7 @@ function printHelp() {
   --provider <auto|codex|gemini>  生图后端（默认 auto）
   --aspect-ratio, --ar <W:H>      宽高比（默认 3:4，抖音竖图友好）
   --output, -o <路径>             生成图保存路径（默认临时文件）
+  --count, -n <N>                 同一 prompt 生成 N 张不同图，作为一条多图图文发布（默认 1）
 
 标题与简介（缺省可由 prompt 自动推导）:
   --title, -t <文本>       作品标题（<=${DEFAULTS.titleMaxLen} 字，强校验）；缺省时按图片风格自动生成
@@ -389,6 +392,77 @@ async function generateImage(promptText, output, aspectRatio, provider) {
       return { ok: true, path: recovered };
     }
     return { ok: false, message: code !== 0 ? `图片生成失败: ${tail}` : `脚本成功但产物无效: ${output}` };
+  } catch (e) {
+    return { ok: false, message: `生图异常: ${e.message}` };
+  } finally {
+    await unlink(promptFile).catch(() => {});
+  }
+}
+
+/** 在扩展名前插入序号后缀：suffixOutput('cover.png', 2) → 'cover-2.png'。
+ *  与 generate-image.js 的 --count 命名保持一致，用于 JSON 解析失败时的磁盘兜底。 */
+function suffixOutput(output, index) {
+  const ext = extname(output);
+  const base = ext ? output.slice(0, -ext.length) : output;
+  return `${base}-${index}${ext}`;
+}
+
+/** 生成 N 张图（同一 prompt，-n 张不同图）。返回 { ok, paths|message }。
+ *  count<=1 退回单图 generateImage（保留 codex 兜底）。count>1 调
+ *  generate-image.js --count N，解析末行 JSON 的 outputs 拿全部产物路径。
+ *  只要至少有一张成功即视为成功，paths 为成功列表。 */
+async function generateImages(promptText, output, count, aspectRatio, provider) {
+  if (count <= 1) {
+    const res = await generateImage(promptText, output, aspectRatio, provider);
+    return res.ok ? { ok: true, paths: [res.path] } : res;
+  }
+
+  if (!(await fileExists(GENERATE_IMAGE_JS))) {
+    return { ok: false, message: `找不到生图脚本: ${GENERATE_IMAGE_JS}` };
+  }
+  const promptFile = join(tmpdir(), `douyin-genprompt-${Date.now()}.md`);
+  try {
+    await writeFile(promptFile, `---\naspect_ratio: "${aspectRatio}"\n---\n\nPROMPT:\n${promptText}\n`, 'utf8');
+    log(`🎨 生成 ${count} 张图片中…（provider=${provider}, ar=${aspectRatio}）`);
+    // 超时按张数放大：N 张图最坏要 N×单图耗时（并发也可能排队），用固定 5 分钟会在
+    // 子进程打印最终 JSON 前就被 SIGKILL，导致解析不到 outputs（误报"均未产出"）。
+    const genTimeout = DEFAULTS.genTimeoutMs * count;
+    const { code, stdout, stderr } = await execCommand('node', [
+      GENERATE_IMAGE_JS, '--prompt-file', promptFile, '--output', output,
+      '--aspect-ratio', aspectRatio, '--provider', provider, '--count', String(count),
+    ], genTimeout);
+
+    // 解析末行 JSON 的 outputs 字段
+    const lines = (stdout || '').trim().split('\n');
+    let data = null;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (line.startsWith('{') && line.endsWith('}')) {
+        try { data = JSON.parse(line); break; } catch {}
+      }
+    }
+    let candidates = ((data && data.outputs) || []).filter(p => p);
+    // 兜底：JSON 没解析到（子进程被超时杀掉、stdout 截断等），直接按 -1..-N 后缀扫磁盘。
+    // generate-image.js 即使被 SIGKILL，已落盘的图仍在 output 的 -1..-N 路径上。
+    if (candidates.length === 0) {
+      candidates = Array.from({ length: count }, (_, i) => suffixOutput(output, i + 1));
+    }
+    const existing = [];
+    for (const p of candidates) {
+      if (await fileExists(p)) existing.push(p);
+    }
+
+    if (existing.length > 0) {
+      const archived = await archivePrompt(promptText, aspectRatio, provider);
+      if (archived) log(`📝 Prompt 已归档: ${archived.split('/').pop()}`);
+      if (existing.length < count) {
+        log(`⚠️  请求 ${count} 张，实际成功 ${existing.length} 张，继续用已成功的图发布。`);
+      }
+      return { ok: true, paths: existing };
+    }
+
+    const tail = (stderr || stdout).trim().slice(-300);
+    return { ok: false, message: `图片生成失败（${count} 张均未产出）: ${tail}` };
   } catch (e) {
     return { ok: false, message: `生图异常: ${e.message}` };
   } finally {
@@ -990,7 +1064,8 @@ async function main() {
     const cSrc = { arg: '(--content)', file: '(--content-file)', prompt: '(prompt 精简)' }[cfg.contentSource] || '';
     console.log('\n🔍 DRY-RUN（不启动浏览器）');
     if (cfg.willGenerate) {
-      console.log(`   图片: 待生成（provider=${cfg.provider}, ar=${cfg.aspectRatio}）`);
+      const count = Math.max(1, cfg.count || 1);
+      console.log(`   图片: 待生成 ${count} 张（provider=${cfg.provider}, ar=${cfg.aspectRatio}）`);
       console.log(`   生图 prompt: ${cfg.promptText.slice(0, 60).replace(/\n/g, ' ')}${cfg.promptText.length > 60 ? '…' : ''}`);
     } else {
       console.log(`   图片(${cfg.images.length}): ${cfg.images.join(', ')}`);
@@ -1004,7 +1079,7 @@ async function main() {
     console.log(`   发布行为: ${cfg.publish ? '自动点击发布' : '停在发布按钮（默认，需人工确认）'}`);
     console.log(`   登录态目录: ${cfg.userDataDir}`);
     console.log('\n将执行步骤：'
-      + (cfg.willGenerate ? '生成图片 → ' : '')
+      + (cfg.willGenerate ? `生成 ${Math.max(1, cfg.count || 1)} 张图片 → ` : '')
       + '登录校验 → 进上传页 → 切发布图文 tab → 上传图片 → 填标题/简介 → '
       + (cfg.music ? '选推荐配乐 → ' : '')
       + (cfg.aiDeclare ? '勾选AI生成声明 → ' : '')
@@ -1018,11 +1093,13 @@ async function main() {
       tmpdir(),
       `douyin-image-${new Date().toISOString().replace(/[:.]/g, '-')}.png`,
     );
-    const gen = await generateImage(cfg.promptText, output, cfg.aspectRatio, cfg.provider);
+    const count = Math.max(1, cfg.count || 1);
+    const gen = await generateImages(cfg.promptText, output, count, cfg.aspectRatio, cfg.provider);
     if (!gen.ok) { console.error(`\n❌ ${gen.message}`); process.exit(1); }
-    cfg.images = [gen.path];
-    const sizeKB = Math.round((await stat(gen.path)).size / 1024);
-    console.log(`✅ 图片已生成: ${gen.path} (${sizeKB} KB)`);
+    cfg.images = gen.paths;
+    const totalKB = (await Promise.all(gen.paths.map(p => stat(p).then(s => s.size)))).reduce((a, b) => a + b, 0) / 1024;
+    console.log(`✅ 已生成 ${gen.paths.length} 张图片 (共 ${Math.round(totalKB)} KB)`);
+    gen.paths.forEach(p => console.log(`   - ${p}`));
   }
 
   await mkdir(cfg.userDataDir, { recursive: true }).catch(() => {});
