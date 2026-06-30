@@ -356,6 +356,32 @@ async function archivePrompt(promptText, aspectRatio, provider) {
   }
 }
 
+/** 把刚生成的图片归档到 prompts/images/，命名与 prompt 文件一一对应。
+ *  - 单图 → prompts/images/YYYYMMDD-NN.png
+ *  - 多图 → prompts/images/YYYYMMDD-NN-1.png ... -N.png
+ *  与 archive_prompt 同前缀，便于后期按规则规整/检索。失败仅警告，不阻塞发布。 */
+async function archiveImages(imagePaths, promptMdPath) {
+  if (!promptMdPath || !imagePaths || imagePaths.length === 0) return [];
+  const archiveDir = join(PROMPTS_DIR, 'images');
+  try { await mkdir(archiveDir, { recursive: true }); } catch { return []; }
+
+  const base = promptMdPath.split('/').pop().replace(/\.md$/, ''); // YYYYMMDD-NN
+  const multi = imagePaths.length > 1;
+  const archived = [];
+  for (let i = 0; i < imagePaths.length; i++) {
+    const src = imagePaths[i];
+    if (!src || !(await fileExists(src))) continue;
+    const ext = extname(src) || '.png';
+    const name = multi ? `${base}-${i + 1}${ext}` : `${base}${ext}`;
+    const dst = join(archiveDir, name);
+    try {
+      await copyFile(src, dst);
+      archived.push(dst);
+    } catch { /* 单张失败不影响其它 */ }
+  }
+  return archived;
+}
+
 /** 调 generate-image.js 生成图片。返回 { ok, path|message }。成功后归档 prompt。 */
 async function generateImage(promptText, output, aspectRatio, provider) {
   if (!(await fileExists(GENERATE_IMAGE_JS))) {
@@ -375,6 +401,8 @@ async function generateImage(promptText, output, aspectRatio, provider) {
     if (code === 0 && (await fileExists(output)) && (await stat(output)).size > 0) {
       const archived = await archivePrompt(promptText, aspectRatio, provider);
       if (archived) log(`📝 Prompt 已归档: ${archived.split('/').pop()}`);
+      const imgArchived = await archiveImages([output], archived);
+      if (imgArchived.length) log(`🖼️  图片已归档: ${imgArchived[0].split('/').pop()}`);
       return { ok: true, path: output };
     }
     // 兜底：脚本失败/超时但 codex 已落盘
@@ -384,6 +412,8 @@ async function generateImage(promptText, output, aspectRatio, provider) {
       log(`⚠️  生图脚本报错/超时，已从 codex 目录兜底捞回：${recovered}`);
       const archived = await archivePrompt(promptText, aspectRatio, provider);
       if (archived) log(`📝 Prompt 已归档: ${archived.split('/').pop()}`);
+      const imgArchived = await archiveImages([recovered], archived);
+      if (imgArchived.length) log(`🖼️  图片已归档: ${imgArchived[0].split('/').pop()}`);
       return { ok: true, path: recovered };
     }
     return { ok: false, message: code !== 0 ? `图片生成失败: ${tail}` : `脚本成功但产物无效: ${output}` };
@@ -450,6 +480,9 @@ async function generateImages(promptText, output, count, aspectRatio, provider) 
     if (existing.length > 0) {
       const archived = await archivePrompt(promptText, aspectRatio, provider);
       if (archived) log(`📝 Prompt 已归档: ${archived.split('/').pop()}`);
+      // 归档 N 张图：YYYYMMDD-NN-1.png ... -N.png（与 prompt md 同前缀）
+      const imgArchived = await archiveImages(existing, archived);
+      if (imgArchived.length) log(`🖼️  图片已归档: ${imgArchived.length} 张 → prompts/images/`);
       if (existing.length < count) {
         log(`⚠️  请求 ${count} 张，实际成功 ${existing.length} 张，继续用已成功的图发布。`);
       }

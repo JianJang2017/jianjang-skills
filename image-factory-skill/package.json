@@ -1,6 +1,6 @@
 {
   "name": "image-factory-skill",
-  "version": "1.2.0",
+  "version": "1.6.0",
   "description": "Generate AI images and deliver them to Feishu, or publish them as Xiaohongshu (RedNote) notes or Douyin (抖音) image-text posts.",
   "type": "module",
   "private": true,

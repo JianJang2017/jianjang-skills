@@ -127,6 +127,45 @@ def archive_prompt(prompt_text, aspect_ratio, provider):
         return None
 
 
+def archive_images(image_paths, prompt_md_path):
+    """把刚生成的图片归档到 prompts/images/，命名与 prompt 文件一一对应。
+
+    命名规则（按前缀检索友好）：
+      - 单图（len==1）→ prompts/images/YYYYMMDD-NN.png
+      - 多图（len>=2）→ prompts/images/YYYYMMDD-NN-1.png ... -N.png
+    与对应的 prompt 文件 prompts/YYYYMMDD-NN.md 共享前缀，方便后期按规则规整。
+
+    image_paths: 生成图片的本地路径列表（来自 generate-image.js 的临时输出）。
+    prompt_md_path: archive_prompt() 返回的归档 md 路径；为空则放弃归档。
+    返回归档后的路径列表（可能比输入短，因为单张复制失败不阻断其它图）。
+    失败仅警告，不抛错——归档是辅助能力，绝不该影响主发送流程。
+    """
+    if not prompt_md_path or not image_paths:
+        return []
+    archive_dir = os.path.join(PROMPTS_DIR, "images")
+    try:
+        os.makedirs(archive_dir, exist_ok=True)
+    except OSError:
+        return []
+
+    base = os.path.splitext(os.path.basename(prompt_md_path))[0]  # YYYYMMDD-NN
+    multi = len(image_paths) > 1
+    archived = []
+    for i, src in enumerate(image_paths, 1):
+        if not src or not os.path.exists(src):
+            continue
+        ext = os.path.splitext(src)[1] or ".png"
+        name = f"{base}-{i}{ext}" if multi else f"{base}{ext}"
+        dst = os.path.join(archive_dir, name)
+        try:
+            shutil.copyfile(src, dst)
+            archived.append(dst)
+        except OSError:
+            # 单张失败不影响其它；只在 verbose 下提示，但不阻塞
+            pass
+    return archived
+
+
 
 
 def load_env():
@@ -273,6 +312,10 @@ def generate_image(prompt, output, aspect_ratio="16:9", provider="auto", verbose
             archived = archive_prompt(prompt, aspect_ratio, provider)
             if archived and verbose:
                 print(f"📝 Prompt 已归档: {os.path.basename(archived)}")
+            # 归档图片到 prompts/images/，命名与 prompt 文件一一对应
+            img_archived = archive_images([output], archived)
+            if img_archived and verbose:
+                print(f"🖼️  图片已归档: {os.path.basename(img_archived[0])}")
             return True, output
 
         # 兜底：脚本失败/超时，但 codex 可能已经把图落盘了
@@ -285,6 +328,10 @@ def generate_image(prompt, output, aspect_ratio="16:9", provider="auto", verbose
             archived = archive_prompt(prompt, aspect_ratio, provider)
             if archived and verbose:
                 print(f"📝 Prompt 已归档: {os.path.basename(archived)}")
+            # 兜底成功时也归档图片
+            img_archived = archive_images([recovered], archived)
+            if img_archived and verbose:
+                print(f"🖼️  图片已归档: {os.path.basename(img_archived[0])}")
             return True, recovered
 
         if result.returncode != 0:
@@ -348,6 +395,10 @@ def generate_images(prompt, output, count, aspect_ratio="16:9", provider="auto",
             archived = archive_prompt(prompt, aspect_ratio, provider)
             if archived and verbose:
                 print(f"📝 Prompt 已归档: {os.path.basename(archived)}")
+            # 归档 N 张图：YYYYMMDD-NN-1.png ... -N.png（与 prompt md 同前缀）
+            img_archived = archive_images(outputs, archived)
+            if img_archived and verbose:
+                print(f"🖼️  图片已归档: {len(img_archived)} 张 → prompts/images/")
             if len(outputs) < count and verbose:
                 print(f"⚠️  请求 {count} 张，实际成功 {len(outputs)} 张，继续用已成功的图发送。")
             return True, outputs

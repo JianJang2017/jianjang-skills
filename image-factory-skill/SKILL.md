@@ -1,7 +1,7 @@
 ---
 name: image-factory-skill
 description: Generate AI images from prompts and either send them to Feishu (Lark) users/group chats via lark-cli, OR publish them as Xiaohongshu (RedNote/小红书) image-text notes, OR publish them as Douyin (抖音) image-text posts — both via persistent Playwright browser sessions. ALSO supports reverse-engineering a generation prompt from an existing image, optimizing an existing prompt by style preset, AND generating character portrait prompts from scratch (subject + style preset → ready-to-use portrait prompt with camera/lighting/quality terms), all via codex-cli / agy. Use when user asks to "generate an image and send to Feishu", "create image and push to lark", "生成图片并发送到飞书", "给某某发一张图", "发布到小红书", "发一篇小红书笔记", "publish to xiaohongshu / rednote", "发布到抖音", "发一篇抖音图文", "publish to douyin", OR when user wants to "反推 prompt", "看图猜 prompt", "reverse prompt from image", "image to prompt", "把这张图变成 prompt", "优化 prompt", "改写 prompt", "polish prompt", "optimize image prompt", OR "生成人物图 prompt", "写一条人物写真 prompt", "generate portrait prompt", "character prompt from subject", "古风人物提示词", or wants to push AI-generated images to Feishu/Xiaohongshu/Douyin OR turn an image back into a reusable text-to-image prompt OR restructure a rough prompt under a specific style preset (hand-drawn / blueprint / watercolor / cyberpunk / 3d / healing / minimal / photo / gufeng-portrait / photo-portrait) OR create a ready-to-use character portrait prompt from a simple subject description (one-liner → structured prompt with style/camera/lighting/quality/negative).
-version: 1.5.0
+version: 1.6.0
 ---
 
 # Image Factory Skill
@@ -823,22 +823,42 @@ python scripts/send_feishu_image.py \
 
 ## Prompt Archiving
 
-Every successful image generation **automatically archives the prompt** to the
-skill's `prompts/` directory, for later classification and reuse.
+Every successful image generation **automatically archives both the prompt and
+the generated image(s)** to the skill's `prompts/` directory, for later
+classification and reuse.
 
-**Naming convention:** `prompts/YYYYMMDD-NN.md`
+**Naming convention** (prompt and images share the same `YYYYMMDD-NN` prefix,
+so you can sort/filter the whole library by date or sequence):
+
+```
+prompts/
+├── YYYYMMDD-NN.md                  ← prompt + frontmatter
+└── images/
+    ├── YYYYMMDD-NN.png             ← single-image generation
+    ├── YYYYMMDD-NN-1.png           ← multi-image (--count N), image 1
+    ├── YYYYMMDD-NN-2.png           ← multi-image, image 2
+    └── YYYYMMDD-NN-N.png           ← ...
+```
+
 - `YYYYMMDD` — generation date
 - `NN` — zero-padded daily sequence number, starting at `01`
+- `-1..-N` suffix appears **only** when `--count >= 2`; single-image generation
+  uses the bare `YYYYMMDD-NN.<ext>` so the prompt and its image are an obvious
+  pair
 
-Each archived file carries frontmatter (`aspect_ratio`, `provider`, `timestamp`)
-plus the full `PROMPT:` body. To reuse an archived prompt:
+Each archived prompt file carries frontmatter (`aspect_ratio`, `provider`,
+`timestamp`) plus the full `PROMPT:` body. To reuse an archived prompt:
 
 ```bash
 python scripts/send_feishu_image.py --prompt-file prompts/20260625-01.md
 ```
 
-The archiving is handled by `archive_prompt()` in `send_feishu_image.py` — no
-manual sequence management needed. See `prompts/README.md` for details.
+Archiving is handled by `archive_prompt()` + `archive_images()` in the three
+publish entry points (`send_feishu_image.py`, `publish_xiaohongshu.js`,
+`publish_douyin.js`) — same naming logic everywhere, no manual sequence
+management needed. Image archiving is **best-effort**: failures only warn and
+never block the send/publish flow (the archive is for later regrouping, not a
+prerequisite for delivery). See `prompts/README.md` for details.
 
 > **Note on full-prompt fidelity:** The prompt parser uses `\Z` (true
 > end-of-string), not `$` (end-of-line). An earlier bug used `$` with the
