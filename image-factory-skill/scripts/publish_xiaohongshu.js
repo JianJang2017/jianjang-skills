@@ -263,6 +263,10 @@ async function fileExists(p) {
 // ─── Prompt → title/content derivation ──────────────────────────────────────
 // 与 generate-image.js / send_feishu_image.py 的解析保持一致：优先取 PROMPT: 段，
 // 否则剥离 --- frontmatter 后取全文。返回纯 prompt 文本（失败返回 null）。
+//
+// 归档的 prompt 文件里，PROMPT: 段可能残留 markdown 小标题（如首行的 `# PROMPT`
+// section 标题，或末尾的 `# Negative Prompt` 段），这些不是真正的画面描述，会污染
+// 标题/正文推导。这里统一剥掉：① 段落边界识别任意级别标题；② 去掉首尾的标题行。
 async function readPromptFile(path) {
   let content;
   try {
@@ -270,20 +274,43 @@ async function readPromptFile(path) {
   } catch {
     return null;
   }
-  // 用 [\s\S] + 末尾边界，避免把多段 prompt 截断成第一段
-  const m = content.match(/^PROMPT:\s*\n([\s\S]+?)(?=\n---|\n##\s|$)/m);
-  if (m) return m[1].trim();
-
-  // 没有 PROMPT: 标记则剥离 frontmatter 后取全文
-  const lines = content.split('\n');
-  let inFm = false;
-  const body = [];
-  for (const line of lines) {
-    if (line.trim() === '---') { inFm = !inFm; continue; }
-    if (!inFm) body.push(line);
+  let text;
+  // 贪婪抓取 PROMPT: 之后的全部内容（不用 $ 结尾锚，避免 m 模式下停在首行行尾）。
+  // 首尾残留的 markdown 标题（`# PROMPT` / `# Negative Prompt` 段）交给下面统一剥离。
+  const m = content.match(/^PROMPT:[ \t]*\n([\s\S]+)/m);
+  if (m) {
+    text = m[1];
+  } else {
+    // 没有 PROMPT: 标记则剥离 frontmatter 后取全文
+    const lines = content.split('\n');
+    let inFm = false;
+    const body = [];
+    for (const line of lines) {
+      if (line.trim() === '---') { inFm = !inFm; continue; }
+      if (!inFm) body.push(line);
+    }
+    text = body.join('\n');
   }
-  const text = body.join('\n').trim();
-  return text || null;
+  return stripMarkdownHeadings(text) || null;
+}
+
+// 剥掉 prompt 文本首尾的独立 markdown 标题行（如 `# PROMPT` / `## Negative Prompt`），
+// 保留正文段落。仅剔除「整行就是标题」的行，不动正文中含 # 的内容。
+function stripMarkdownHeadings(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  // 掐头：跳过开头的空行和标题行
+  let start = 0;
+  while (start < lines.length &&
+         (lines[start].trim() === '' || /^#{1,6}\s/.test(lines[start].trim()))) {
+    start++;
+  }
+  // 掐尾：从末尾遇到的第一个标题行开始整段丢弃（负面提示词等尾段）
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    if (/^#{1,6}\s/.test(lines[i].trim())) { end = i; break; }
+  }
+  return lines.slice(start, end).join('\n').trim();
 }
 
 // ─── Image generation (生成即发布) ───────────────────────────────────────────
@@ -891,6 +918,8 @@ async function runPublish(page, cfg) {
   }
 
   // 6) 填正文（contenteditable，需聚焦后输入触发事件）
+  //    正文只填「文案」；话题（步骤 7）插在文案之后，提示词（步骤 7.2）再追加到最末，
+  //    最终版式：文案 → #话题 → 分隔线 → 📝 提示词，便于长按整段复制提示词。
   const editor = await firstVisible(page, SELECTORS.contentEditor, cfg.timeout);
   if (!editor) {
     return { ok: false, message: '找不到正文编辑区（contentEditor selector 可能已失效）' };
@@ -898,12 +927,13 @@ async function runPublish(page, cfg) {
   try {
     await editor.click();
     await editor.type(cfg.content, { delay: 8 });
-    log(`📝 正文已填（${[...cfg.content].length} 字）`);
+    log(`📝 文案已填（${[...cfg.content].length} 字）`);
   } catch (e) {
     return { ok: false, message: `填写正文失败: ${e.message}` };
   }
 
-  // 7) 话题：正文末尾逐个输入 #话题，并选中下拉项（避免纯文本丢 topic entity）
+  // 7) 话题：正文末尾逐个输入 #话题，并选中下拉项（避免纯文本丢 topic entity）。
+  //    此时光标在文案末尾，话题被插在文案与提示词之间。
   if (cfg.topics.length) {
     for (const topic of cfg.topics) {
       try {
@@ -923,6 +953,20 @@ async function runPublish(page, cfg) {
       }
     }
     log(`🏷️  已尝试添加话题：${cfg.topics.map((t) => '#' + t).join(' ')}`);
+  }
+
+  // 7.2) 提示词：追加到正文最末（文案/话题之后），用分隔线隔开便于长按整段复制。
+  if (cfg.promptText) {
+    try {
+      await editor.click();
+      await page.keyboard.press('End');
+      const block = '\n\n' + '─'.repeat(20) + '\n📝 提示词：\n' + cfg.promptText;
+      await editor.type(block, { delay: 6 });
+      log(`📝 提示词已附（${[...cfg.promptText].length} 字，位于话题之后）`);
+    } catch (e) {
+      // 提示词附加失败不阻断发布，仅警告
+      log(`⚠️  提示词追加失败：${e.message}，将不带提示词继续`);
+    }
   }
 
   await sleep(1000);

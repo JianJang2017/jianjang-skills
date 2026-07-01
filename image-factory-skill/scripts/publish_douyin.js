@@ -274,6 +274,9 @@ async function fileExists(p) {
 // ─── Prompt → title/content derivation ──────────────────────────────────────
 // 与 generate-image.js / send_feishu_image.py 解析一致：优先取 PROMPT: 段，
 // 否则剥离 --- frontmatter 后取全文。返回纯 prompt 文本（失败返回 null）。
+//
+// 归档的 prompt 文件里，PROMPT: 段可能残留 markdown 小标题（如首行的 `# PROMPT`
+// section 标题，或末尾的 `# Negative Prompt` 段），会污染标题/简介推导。这里统一剥掉。
 async function readPromptFile(path) {
   let content;
   try {
@@ -281,18 +284,39 @@ async function readPromptFile(path) {
   } catch {
     return null;
   }
-  const m = content.match(/^PROMPT:\s*\n([\s\S]+?)(?=\n---|\n##\s|$)/m);
-  if (m) return m[1].trim();
-
-  const lines = content.split('\n');
-  let inFm = false;
-  const body = [];
-  for (const line of lines) {
-    if (line.trim() === '---') { inFm = !inFm; continue; }
-    if (!inFm) body.push(line);
+  let text;
+  // 贪婪抓取 PROMPT: 之后的全部内容（不用 $ 结尾锚，避免 m 模式下停在首行行尾）。
+  const m = content.match(/^PROMPT:[ \t]*\n([\s\S]+)/m);
+  if (m) {
+    text = m[1];
+  } else {
+    const lines = content.split('\n');
+    let inFm = false;
+    const body = [];
+    for (const line of lines) {
+      if (line.trim() === '---') { inFm = !inFm; continue; }
+      if (!inFm) body.push(line);
+    }
+    text = body.join('\n');
   }
-  const text = body.join('\n').trim();
-  return text || null;
+  return stripMarkdownHeadings(text) || null;
+}
+
+// 剥掉 prompt 文本首尾的独立 markdown 标题行（如 `# PROMPT` / `## Negative Prompt`），
+// 保留正文段落。仅剔除「整行就是标题」的行，不动正文中含 # 的内容。
+function stripMarkdownHeadings(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let start = 0;
+  while (start < lines.length &&
+         (lines[start].trim() === '' || /^#{1,6}\s/.test(lines[start].trim()))) {
+    start++;
+  }
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    if (/^#{1,6}\s/.test(lines[i].trim())) { end = i; break; }
+  }
+  return lines.slice(start, end).join('\n').trim();
 }
 
 // ─── Image generation (生成即发布) ───────────────────────────────────────────
