@@ -1,0 +1,29 @@
+{
+  "name": "wechat-nostalgia-music",
+  "version": "1.2.0",
+  "description": "怀旧音乐微信公众号创作技能 - 内容创作、配图、发布一体化",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "publish": "node scripts/publish-to-wechat.js",
+    "generate-image": "node scripts/generate-image.js",
+    "verify": "bash scripts/verify-integration.sh && bash scripts/verify-publish.sh",
+    "verify:illustration": "bash scripts/verify-integration.sh",
+    "verify:publish": "bash scripts/verify-publish.sh"
+  },
+  "keywords": [
+    "wechat",
+    "music",
+    "nostalgia",
+    "article",
+    "illustration",
+    "publishing"
+  ],
+  "author": "怀旧音乐",
+  "license": "ISC",
+  "dependencies": {
+    "form-data": "^4.0.6",
+    "marked": "^18.0.6"
+  }
+}
