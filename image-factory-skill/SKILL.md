@@ -34,7 +34,9 @@ Use this skill when the user wants to:
    - User IDs (open_id format: `ou_xxx`)
    - Chat IDs (group chat format: `oc_xxx`)
 3. **Caption** (optional): Text message to accompany the image
-4. **Aspect ratio** (optional, default `16:9`): Image dimensions
+4. **Aspect ratio** (optional, **default `9:16`** — vertical, optimized for social-media reposting): Image dimensions. Only switch to a horizontal ratio (16:9, 4:3) when the user explicitly asks for a wide/landscape image (e.g. architecture diagrams, flowcharts). When the user gives no ratio, always use `9:16`.
+
+> ⚠️ **Default is `9:16` (vertical) for the Feishu channel**, because these images are meant to be reposted to social platforms (Xiaohongshu / Douyin / WeChat) where vertical is the native format. Do not fall back to `16:9` unless the user names a horizontal ratio.
 
 **Example user inputs:**
 ```
@@ -78,7 +80,7 @@ FEISHU_SEND_AS=bot                 # Identity: bot | user
 node scripts/generate-image.js \
   --prompt-file <temp-prompt.md> \
   --output <temp-image.png> \
-  --aspect-ratio 16:9 \
+  --aspect-ratio 9:16 \
   --provider auto
 ```
 
@@ -109,7 +111,7 @@ Outputs are suffixed `-1..-N` off the base `--output` path.
 Create a temporary markdown file with the user's prompt:
 ```markdown
 ---
-aspect_ratio: "16:9"
+aspect_ratio: "9:16"
 ---
 
 PROMPT:
@@ -125,6 +127,34 @@ The script extracts the `PROMPT:` section for generation.
 
 ### Step 4: Send to Feishu
 
+#### Step 4a: Always draft copy + tags first (default behavior)
+
+Before sending, **always** write a short social-media caption and a set of topic
+tags derived from the image's prompt, and pass them via `--copywriting` and
+`--tags`. This is the default — do it every time unless the user explicitly says
+"just the image" / "不要文案" / "no caption".
+
+The reason: these images are generated to be reposted to Xiaohongshu / Douyin /
+WeChat. A bare image forces the user to hand-write copy every time. By attaching
+a ready-to-paste copy block (copy + `#tags`) inside the Feishu message, the user
+can long-press once and paste straight into a post. The script merges copy+tags
+into one continuous paragraph above the prompt precisely so it copies as a single
+block.
+
+**How to draft (match the image, don't use a fixed template):**
+- **Copy (`--copywriting`)**: 1–3 short lines in the image's language (Chinese
+  prompt → Chinese copy). Capture the mood/subject — e.g. for a gufeng portrait,
+  something evocative about the scene; for a product shot, a punchy hook. Keep it
+  natural and platform-native, not a description of the prompt.
+- **Tags (`--tags`)**: 4–8 comma-separated topic tags relevant to the subject and
+  style (the script auto-prefixes `#`). Mix broad discovery tags with specific
+  ones — e.g. `古风,古风写真,国风美学,汉服,插画,AI绘画`.
+
+Tailor both to *this* image. Two different images should never get identical copy
+or tags. When in doubt about tone, infer from the prompt's subject and style.
+
+#### Step 4b: Send
+
 **Use the Python orchestrator `send_feishu_image.py`:**
 
 ```bash
@@ -132,23 +162,29 @@ python scripts/send_feishu_image.py \
   --image <generated-image.png> \
   --user-ids "ou_xxx,ou_yyy" \
   --chat-ids "oc_zzz" \
-  --caption "Optional message text" \
+  --caption "<short title>" \
+  --copywriting "<drafted social-media copy>" \
+  --tags "古风,古风写真,国风美学,汉服,AI绘画" \
   --as bot
 ```
 
 **Send multiple images as one message:**
 
 ```bash
-# Pre-generated images (comma-separated)
+# Pre-generated images (comma-separated) — still draft copy + tags
 python scripts/send_feishu_image.py \
   --image "a.png,b.png,c.png" \
-  --user-ids "ou_xxx"
+  --user-ids "ou_xxx" \
+  --copywriting "<drafted copy>" \
+  --tags "标签1,标签2,标签3"
 
 # Generate N images from one prompt, send as one multi-image message
 python scripts/send_feishu_image.py \
   --prompt "手绘风格的系统架构图" \
   --count 3 \
-  --user-ids "ou_xxx"
+  --user-ids "ou_xxx" \
+  --copywriting "<drafted copy>" \
+  --tags "标签1,标签2,标签3"
 ```
 
 **The script handles:**
@@ -191,7 +227,9 @@ Results:
   ✅ 👤 用户 ou_yyy
   ✅ 👥 群聊 oc_zzz
 
-📝 Caption: "Optional message text"
+📝 Caption: "<short title>"
+✍️ 文案: "<drafted social-media copy>"
+🏷️ 标签: #标签1 #标签2 #标签3
 ```
 
 **Partial failure:**
