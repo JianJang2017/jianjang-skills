@@ -327,50 +327,170 @@ graph TD
 
 ### 安装
 
-**方式一：符号链接（推荐）**
+**方式一：.skill 文件安装（推荐，适合普通用户）**
 
 ```bash
-# 克隆或下载本项目
-git clone https://github.com/JianJang2017/jianjang-skills.git
+# 1. 下载最新的 .skill 文件
+# 访问 https://github.com/JianJang2017/jianjang-skills/releases
+# 下载 enterprise-dev-flow-v2.2.0.skill
 
-# 创建符号链接
-ln -s $(pwd)/jianjang-skills/enterprise-dev-flow ~/.claude/skills/enterprise-dev-flow
+# 2. 在 Claude Code 中安装
+# 方法 A: 拖拽 .skill 文件到 Claude Code 窗口
+# 方法 B: 使用命令行
+claude skill install enterprise-dev-flow-v2.2.0.skill
+
+# 优势：一键安装，无需配置
 ```
 
-**方式二：直接复制**
+**方式二：符号链接（推荐，适合开发者）**
 
 ```bash
-cp -r enterprise-dev-flow ~/.claude/skills/
+# 1. 克隆本项目到本地
+git clone https://github.com/JianJang2017/jianjang-skills.git
+cd jianjang-skills
+
+# 2. 创建符号链接到 Claude Code 插件目录
+ln -s "$(pwd)/enterprise-dev-flow" ~/.claude/plugins/enterprise-dev-flow
+
+# 优势：可以直接修改源码，git pull 即可更新
 ```
 
 ### 验证安装
 
+**自动验证（推荐）**
+
 ```bash
-# 检查技能包
-ls ~/.claude/skills/enterprise-dev-flow/skills/*/SKILL.md
+# 进入技能包目录
+cd ~/.claude/plugins/enterprise-dev-flow
+
+# 运行验证脚本
+bash verify-install.sh
+
+# 验证脚本会检查：
+# ✓ 核心文件完整性
+# ✓ 5 个技能文件
+# ✓ 25+ 规则文件
+# ✓ 6 个参考模板
+# ✓ 命令别名配置
 ```
 
-### 使用命令
+**手动验证**
 
 ```bash
-# 在 Claude Code 中使用
-/prd:writing-prd          # 撰写PRD
-/dev:writing-design       # 撰写设计文档
-/dev:planning-tasks       # 拆分任务
+# 检查插件是否安装成功
+ls ~/.claude/plugins/enterprise-dev-flow/skills/*/SKILL.md
+
+# 应该看到 5 个技能文件：
+# - prd-writer/SKILL.md
+# - design-writer/SKILL.md
+# - task-planner/SKILL.md
+# - test-designer/SKILL.md
+# - test-reporter/SKILL.md
+```
+
+> 💡 **提示：** 详细的安装说明、常见问题排查和卸载方法，请参考 [INSTALL.md](INSTALL.md)
+
+### 使用方式
+
+**方式一：命令触发（精确控制）**
+
+```bash
+# 在 Claude Code 对话框中输入命令
+/prd:writing-prd          # 撰写产品需求文档
+/dev:writing-design       # 撰写技术设计文档
+/dev:planning-tasks       # 拆分开发任务并生成计划
 /test:designing-cases     # 设计测试用例
-/test:writing-report      # 撰写测试报告
+/test:writing-report      # 撰写测试总结报告
 ```
 
-### 自然语言触发
+**方式二：自然语言触发（智能识别）**
 
-也可以直接用自然语言：
+技能会自动识别以下关键词并触发：
+
+| 技能 | 触发关键词示例 |
+|------|--------------|
+| **prd-writer** | "写PRD"、"需求文档"、"产品设计"、"整理需求"、"功能点" |
+| **design-writer** | "写设计"、"技术方案"、"架构设计"、"数据库怎么建"、"接口怎么设计" |
+| **task-planner** | "拆任务"、"排期"、"开发计划"、"怎么分工"、"先做什么" |
+| **test-designer** | "测试用例"、"怎么测"、"测试点"、"边界值"、"异常情况" |
+| **test-reporter** | "测试报告"、"测试总结"、"能不能上线"、"缺陷情况"、"质量评估" |
+
+**示例对话：**
 
 ```
-"帮我写一个用户登录功能的PRD"
-"根据这个PRD写详细设计"
-"帮我把这个需求拆成开发任务"
-"设计登录功能的测试用例"
-"测试完了，帮我出测试报告"
+👤 "帮我写一个用户登录功能的PRD"
+🤖 [自动触发 prd-writer]
+
+👤 "根据这个PRD写详细设计，数据库用PostgreSQL"
+🤖 [自动触发 design-writer]
+
+👤 "帮我把这个需求拆成开发任务，要能直接给Claude Code执行"
+🤖 [自动触发 task-planner，输出Plan格式]
+
+👤 "设计登录功能的测试用例，要考虑安全性和幂等性"
+🤖 [自动触发 test-designer]
+
+👤 "测试完了，帮我出测试报告，看看能不能上线"
+🤖 [自动触发 test-reporter]
+```
+
+---
+
+## 📦 打包发布
+
+如果你想将技能包打包成 .skill 文件供他人安装：
+
+### 使用打包脚本（推荐）
+
+```bash
+# 进入技能包目录
+cd /path/to/enterprise-dev-flow
+
+# 运行打包脚本
+bash package.sh
+
+# 脚本会自动：
+# ✓ 检查必要文件完整性
+# ✓ 从 plugin.json 读取版本号
+# ✓ 排除不必要的文件（.git、.DS_Store、workspace、evals 等）
+# ✓ 生成 enterprise-dev-flow-v2.2.0.skill 文件
+# ✓ 显示文件大小和安装方法
+```
+
+### 手动打包
+
+```bash
+# 进入技能包目录
+cd /path/to/enterprise-dev-flow
+
+# 使用 tar 打包
+tar -czf enterprise-dev-flow-v2.2.0.skill \
+  --exclude='.git' \
+  --exclude='.DS_Store' \
+  --exclude='*workspace' \
+  --exclude='*/evals' \
+  --exclude='*.log' \
+  .
+
+# 验证打包内容
+tar -tzf enterprise-dev-flow-v2.2.0.skill | head -20
+```
+
+### 打包后的用途
+
+打包后的 .skill 文件可以：
+- 上传到 GitHub Releases 供用户下载
+- 分享给团队成员直接安装
+- 提交到 Claude Code 插件市场
+
+### 安装打包文件
+
+```bash
+# 方法 1: 拖拽安装
+# 直接将 .skill 文件拖拽到 Claude Code 窗口
+
+# 方法 2: 命令行安装
+claude skill install enterprise-dev-flow-v2.2.0.skill
 ```
 
 ---
@@ -436,6 +556,85 @@ ls ~/.claude/skills/enterprise-dev-flow/skills/*/SKILL.md
 
 📝 格式二：Claude Code Plan
 可直接交给 Claude Code 按步骤执行的实施计划
+```
+
+### 场景 4：测试工程师设计测试用例
+
+```
+👤 用户：这个支付功能的PRD已经评审通过了，帮我设计测试用例
+
+🤖 Claude：[自动触发 test-designer 技能]
+我会基于PRD系统性地设计测试用例，覆盖：
+
+✓ 正常流程：支付成功、退款成功
+✓ 业务异常：余额不足、订单已支付、订单已取消
+✓ 边界值：最小金额0.01元、最大金额限制
+✓ 安全性：SQL注入、XSS攻击、越权支付他人订单
+✓ 幂等性：重复提交订单、网络超时重试
+✓ 并发场景：同一订单并发支付
+✓ 兼容性：不同支付渠道（微信/支付宝）
+✓ 用户体验：支付超时提示、支付结果通知
+
+输出格式：完整的测试用例表格（含编号、优先级、前置条件、测试步骤、预期结果）
+```
+
+### 场景 5：测试完成后撰写报告
+
+```
+👤 用户：测试执行完了，总共150个用例，执行了148个，通过了142个，
+       发现了8个bug（2个P0、3个P1、3个P2），P0和P1都修复了，
+       帮我出测试报告看看能不能上线
+
+🤖 Claude：[自动触发 test-reporter 技能]
+我会生成测试总结报告，包含：
+
+📊 核心指标：
+- 用例执行率：98.67% (148/150)
+- 用例通过率：95.95% (142/148)
+- 缺陷修复率：62.5% (5/8)
+
+🐛 缺陷分析：
+- P0级（阻塞）：2个，已全部修复 ✓
+- P1级（严重）：3个，已全部修复 ✓
+- P2级（一般）：3个，遗留待后续版本修复
+
+✅ 准出评估：
+对照企业准出标准逐项检查，给出是否建议上线的结论
+
+⚠️ 风险评估：
+识别技术风险、业务风险、时间风险，并给出缓解措施
+```
+
+### 场景 6：完整流程串联
+
+```
+👤 用户：我要做一个订单管理功能，从需求到上线全流程帮我走一遍
+
+🤖 Claude：好的，我会引导你完成完整的开发流程：
+
+【第1步：需求阶段】
+/prd:writing-prd
+我会提问确认：订单类型、状态流转、支付方式、退款规则等
+输出：《订单管理功能PRD v1.0》
+
+【第2步：设计阶段】
+/dev:writing-design
+基于PRD输出：时序图、数据库DDL、Redis缓存设计、接口文档、核心逻辑
+输出：《订单管理详细设计 v1.0》
+
+【第3步：任务拆分】
+/dev:planning-tasks
+输出：Epic/Story/Task三层任务清单 + Claude Code Plan
+你可以选择：自己按清单开发 或 让Claude Code自动执行Plan
+
+【第4步：测试准备】
+/test:designing-cases
+基于PRD设计测试用例，覆盖8大维度
+输出：《订单管理测试用例集 v1.0》（含150+条用例）
+
+【第5步：测试总结】
+开发完成并执行测试后，使用 /test:writing-report
+输出：《订单管理测试报告 v1.0》（含准出评估和上线建议）
 ```
 
 ---

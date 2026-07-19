@@ -1,0 +1,22 @@
+
+### 诗词原文（移动端优化：每句独立成行）
+
+```html
+<section style="margin:8px 0 28px;padding:24px 18px;background:{{poem_bg}};border-radius:6px;border:1px solid {{poem_border}};text-align:center;">
+  <p style="margin:0 0 4px;font-size:20px;font-weight:700;color:{{title_color}};font-family:'STKaiti','KaiTi','Kaiti SC','Songti SC',serif;">{{poem_title}}</p>
+  <p style="margin:0 0 16px;font-size:14px;color:{{author_color}};">{{dynasty_author}}</p>
+  <div style="font-size:18px;line-height:2.0;color:{{text_color}};font-family:'STKaiti','KaiTi','Kaiti SC','Songti SC',serif;letter-spacing:0.5px;">
+    {{poem_lines_each_line}}
+  </div>
+</section>
+```
+
+> **移动端优化**：`{{poem_lines_each_line}}` 应为每句诗独立生成一个 `<p>` 标签，确保在窄屏上不会句内换行。示例：
+> ```html
+> <p style="margin:0 0 6px;">床前明月光，</p>
+> <p style="margin:0 0 6px;">疑是地上霜。</p>
+> <p style="margin:0 0 6px;">举头望明月，</p>
+> <p style="margin:0;">低头思故乡。</p>
+> ```
+> 注意最后一句 `margin:0`（无下边距）。长诗可适当减小字号至 17px。
+

@@ -277,7 +277,7 @@ def read_prompt_file(path):
     return text or None
 
 
-def generate_image(prompt, output, aspect_ratio="16:9", provider="auto", verbose=True):
+def generate_image(prompt, output, aspect_ratio="9:16", provider="auto", verbose=True):
     """调用 generate-image.js 生成图片。返回 (ok, message)。
 
     若脚本失败/超时，会尝试从 codex 生成目录兜底捞回本次刚生成的图。
@@ -356,7 +356,7 @@ def _parse_last_json(text):
     return None
 
 
-def generate_images(prompt, output, count, aspect_ratio="16:9", provider="auto", verbose=True):
+def generate_images(prompt, output, count, aspect_ratio="9:16", provider="auto", verbose=True):
     """生成 N 张图（同一个 prompt，-n 张不同的图）。返回 (ok, paths_or_msg)。
 
     count<=1 时退回单图 generate_image（保留 codex 兜底）。count>1 时调
@@ -611,7 +611,7 @@ def main():
     parser.add_argument("--tags", help="自媒体标签，逗号分隔（自动加 #），拼到文案末尾一起发")
     parser.add_argument("--no-prompt-caption", action="store_true",
                         help="不要把生成 prompt 作为可复制文本附在图片消息里")
-    parser.add_argument("--aspect-ratio", default="16:9", help="图片宽高比，默认 16:9")
+    parser.add_argument("--aspect-ratio", default="9:16", help="图片宽高比，默认 9:16（竖版，适配自媒体）")
     parser.add_argument("--count", "-n", type=int, default=1,
                         help="同一个 prompt 生成 N 张不同的图，合成一条多图消息发送（默认 1）")
     parser.add_argument("--provider", default="auto", choices=["auto", "codex", "gemini"],
