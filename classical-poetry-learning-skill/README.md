@@ -125,6 +125,65 @@
 - **HTML/发布**：转成 HTML、公众号 HTML、发布到公众号、发到草稿箱、创建公众号草稿
 - **强调审校**：特别注意审校、检查错别字、确保历史准确
 
+## 工作空间管理
+
+**所有生成的内容自动组织到按诗词名称划分的工作空间**，便于管理和归档。
+
+### 工作空间结构
+
+在当前工作目录下创建统一的 `release/` 目录（已存在则复用），每首诗词是其下一个子目录：
+
+```
+release/
+├── 静夜思/
+│   ├── .workflow-state.json           # 流程状态（自动生成）
+│   ├── 《静夜思》_古诗词鉴赏_中文版.md   # 推文内容
+│   ├── poem-metadata.json              # 诗词元数据
+│   ├── imgs/
+│   │   ├── prompts/                    # AI 绘图 prompt
+│   │   ├── cover.png                   # 封面成品
+│   │   └── illustration-01.png         # 配图
+│   ├── html/
+│   │   ├── preview.html               # 预览稿
+│   │   └── publish.html               # 发布稿
+│   └── published/
+│       ├── draft-info.json            # 草稿箱信息
+│       └── publish-info.json          # 发布信息
+└── 春晓/
+    └── ...（同上结构）
+```
+
+### 工作空间管理工具
+
+使用 `workspace-manager.js` 管理工作空间：
+
+```bash
+# 初始化工作空间
+node scripts/workspace-manager.js init 静夜思 --author 李白 --dynasty 唐
+
+# 更新阶段状态
+node scripts/workspace-manager.js update 静夜思 writing completed
+
+# 列出所有工作空间
+node scripts/workspace-manager.js list
+
+# 查看未完成的工作
+node scripts/workspace-manager.js resume
+
+# 生成交付清单
+node scripts/workspace-manager.js report 静夜思
+```
+
+### 自动化行为
+
+技能在运行时会自动：
+- 检测或创建诗词工作空间
+- 保存所有产物到对应目录
+- 更新 `.workflow-state.json` 记录进度
+- 提供交付清单和下一步建议
+
+当用户说"继续"时，自动恢复到上次中断点。
+
 ## 目录结构
 
 ```
@@ -134,7 +193,9 @@ classical-poetry-learning-skill/
 ├── README_EN.md                    # 英文说明
 ├── ILLUSTRATION_GUIDE.md           # 配图功能使用指南
 ├── scripts/
-│   ├── generate-image.js           # 图片生成脚本（codex / gemini）
+│   ├── generate-image.js           # 图片生成脚本（codex / gemini / qwen）
+│   ├── compose-cover.js            # 封面文字合成脚本（Chrome headless）
+│   ├── workspace-manager.js        # 工作空间管理工具
 │   └── wechat_mp_publish.py        # 公众号草稿/发布脚本
 ├── references/
 │   ├── template_zh_cn.md           # 中文版模板
@@ -173,8 +234,15 @@ classical-poetry-learning-skill/
 
 **必需工具**：
 
-1. **AI 图像生成后端（至少安装一个）**
-   - **codex-cli**（OpenAI Codex CLI，推荐）
+1. **AI 图像生成后端（至少配置一个）**
+   
+   - **qwen**（阿里云百炼千问文生图，HTTP API）**推荐**
+     - 优势：无需安装 CLI 工具，HTTP 调用，擅长中文语义和复杂文本渲染
+     - 配置：在 `~/.config/wechat-mp/wechat.env.profile` 添加 `DASHSCOPE_API_KEY`
+     - 获取 API Key：https://help.aliyun.com/zh/model-studio/get-api-key
+     - 验证：`node scripts/generate-image.js --help` 应显示 "Available backends: ... qwen"
+   
+   - **codex-cli**（OpenAI Codex CLI）
      - 安装：`npm install -g codex-cli` 或参考 https://openai.com/codex
      - 验证：`codex --version`
    
@@ -224,17 +292,46 @@ node scripts/generate-image.js --prompt-file imgs/prompts/00-cover.md --check-pr
 python3 scripts/wechat_mp_publish.py --help
 ```
 
-### 微信公众号配置（发布功能必需）
+### 微信公众号与配图后端配置
 
-首次使用公众号发布功能，需配置 **AppID / AppSecret**：
+首次使用公众号发布功能或千问配图后端，需配置统一的凭据文件：
 
+**macOS / Linux**：
 ```bash
+# 创建配置目录
 mkdir -p ~/.config/wechat-mp && chmod 700 ~/.config/wechat-mp
-# 创建配置文件 ~/.config/wechat-mp/wechat.env.profile，内容：
-#   WECHAT_APP_ID=wx...
-#   WECHAT_APP_SECRET=...
+
+# 复制示例文件并填写真实凭据
+cp wechat.env.profile.example ~/.config/wechat-mp/wechat.env.profile
+
+# 保护密钥文件
 chmod 600 ~/.config/wechat-mp/wechat.env.profile
 ```
+
+**Windows (PowerShell)**：
+```powershell
+# 创建配置目录
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.config\wechat-mp"
+
+# 复制示例文件并填写真实凭据
+copy wechat.env.profile.example "$env:USERPROFILE\.config\wechat-mp\wechat.env.profile"
+
+# 配置文件路径
+# C:\Users\<你的用户名>\.config\wechat-mp\wechat.env.profile
+```
+
+配置文件示例内容（`wechat.env.profile.example`）：
+```bash
+# 微信公众号发布凭据
+WECHAT_APP_ID=wx1234567890abcdef
+WECHAT_APP_SECRET=0123456789abcdef0123456789abcdef
+
+# 配图后端配置
+IMAGE_PROVIDER=codex              # 默认后端：codex/gemini/qwen/auto
+DASHSCOPE_API_KEY=sk-xxxxxxxx    # 千问 API Key（仅当使用 qwen 时需要）
+```
+
+配置优先级：**命令行参数 > 配置文件 > 环境变量 > 内置默认**
 
 详见技能目录下的 `wechat.env.profile.example` 示例文件。
 

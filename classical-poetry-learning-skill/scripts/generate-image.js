@@ -3,7 +3,7 @@
 /**
  * Image generation script for article-illustration-tools
  *
- * Backends: codex-cli, gemini (agy)
+ * Backends: codex-cli, gemini (agy), qwen (DashScope HTTP API)
  *
  * Key features:
  *  - Verifies output file actually exists (not just process exit code)
@@ -22,13 +22,68 @@
 
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, stat, readdir, mkdir } from 'node:fs/promises';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, basename, join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
+// ─── Config file ──────────────────────────────────────────────────────────────
+// 配置文件采用与 wechat_mp_publish.py 相同的 KEY=VALUE 约定，存放于用户目录，
+// 避免把密钥写进仓库或命令行。默认路径可用 --config 或 IMAGE_CONFIG_FILE 覆盖。
+// 读取顺序（优先级从高到低）：命令行参数 > 配置文件 > 进程环境变量 > 内置默认值。
+// 支持的键：
+//   IMAGE_PROVIDER          默认后端（codex/gemini/qwen/auto），默认 codex
+//   DASHSCOPE_API_KEY       千问 API Key（兼容 QWEN_API_KEY）
+//   QWEN_MODEL / QWEN_BASE_URL / QWEN_NEGATIVE_PROMPT   千问可选项
+const DEFAULT_CONFIG_FILE = join(homedir(), '.config', 'wechat-mp', 'wechat.env.profile');
+
+const CONFIG_KEYS = new Set([
+  'IMAGE_PROVIDER',
+  'DASHSCOPE_API_KEY', 'QWEN_API_KEY',
+  'QWEN_MODEL', 'QWEN_BASE_URL', 'QWEN_NEGATIVE_PROMPT',
+]);
+
+function stripEnvValue(value) {
+  const v = value.trim();
+  if (v.length >= 2 && v[0] === v[v.length - 1] && (v[0] === '"' || v[0] === "'")) {
+    return v.slice(1, -1);
+  }
+  return v;
+}
+
+/** 读取 KEY=VALUE 配置文件；不存在时返回空对象。仅识别白名单键。 */
+function loadConfigFile(path) {
+  if (!path || !existsSync(path)) return {};
+  const out = {};
+  for (const rawLine of readFileSync(path, 'utf-8').split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || !line.includes('=')) continue;
+    const idx = line.indexOf('=');
+    const key = line.slice(0, idx).trim();
+    if (CONFIG_KEYS.has(key)) out[key] = stripEnvValue(line.slice(idx + 1));
+  }
+  return out;
+}
+
+// 解析配置文件路径：优先 IMAGE_CONFIG_FILE 环境变量，否则默认路径。
+// （命令行 --config 在 parseArgs 后二次合并，见 resolveConfig）
+const FILE_CONFIG = loadConfigFile(process.env.IMAGE_CONFIG_FILE || DEFAULT_CONFIG_FILE);
+
+/** 按 文件 > 环境变量 > 默认 的顺序取值。 */
+function cfgValue(fileCfg, key, fallback = undefined, ...altEnvKeys) {
+  if (fileCfg[key] != null && fileCfg[key] !== '') return fileCfg[key];
+  if (process.env[key] != null && process.env[key] !== '') return process.env[key];
+  for (const alt of altEnvKeys) {
+    if (fileCfg[alt] != null && fileCfg[alt] !== '') return fileCfg[alt];
+    if (process.env[alt] != null && process.env[alt] !== '') return process.env[alt];
+  }
+  return fallback;
+}
+
 const DEFAULTS = {
-  provider: 'auto',
+  // 默认后端可在配置文件用 IMAGE_PROVIDER 指定，缺省 codex
+  provider: cfgValue(FILE_CONFIG, 'IMAGE_PROVIDER', 'codex'),
   aspectRatio: '16:9',
   timeoutMs: 5 * 60 * 1000,   // 5 minutes per image
   retries: 1,                  // 1 retry on failure
@@ -36,6 +91,21 @@ const DEFAULTS = {
 };
 
 const CODEX_GENERATED_DIR = join(homedir(), '.codex', 'generated_images');
+
+// ─── Qwen (DashScope) config ──────────────────────────────────────────────────
+// Qwen 是阿里云百炼的文生图 HTTP 服务，不同于本地 CLI 后端：
+// 通过 API Key 鉴权（来自配置文件或环境变量），同步接口返回图像 URL，再下载到本地。
+const QWEN = {
+  // 优先 DASHSCOPE_API_KEY（官方标准变量名），兼容 QWEN_API_KEY
+  apiKey: cfgValue(FILE_CONFIG, 'DASHSCOPE_API_KEY', null, 'QWEN_API_KEY'),
+  // 默认北京地域旧域名（无需 WorkspaceId）；可覆盖为专属域名或新加坡地域
+  baseUrl: cfgValue(FILE_CONFIG, 'QWEN_BASE_URL', 'https://dashscope.aliyuncs.com'),
+  model: cfgValue(FILE_CONFIG, 'QWEN_MODEL', 'qwen-image-2.0-pro'),
+  // 反向提示词：抑制常见 AI 瑕疵
+  negativePrompt: cfgValue(FILE_CONFIG, 'QWEN_NEGATIVE_PROMPT',
+    '低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，画面具有AI感，构图混乱，文字模糊，扭曲'),
+};
+const QWEN_API_PATH = '/api/v1/services/aigc/multimodal-generation/generation';
 
 // Process-wide set of codex source images already claimed by a task in this run.
 // Prevents two concurrent batch tasks from copying the same source.
@@ -46,7 +116,7 @@ const CLAIMED_CODEX_SOURCES = new Set();
 function parseArgs() {
   const args = process.argv.slice(2);
   const cfg = {
-    provider: DEFAULTS.provider,
+    provider: null,   // null = 未在命令行显式指定，后续回退到配置文件/默认
     promptFile: null,
     output: null,
     aspectRatio: DEFAULTS.aspectRatio,
@@ -56,6 +126,7 @@ function parseArgs() {
     batch: null,
     allowAiText: false,
     checkPrompt: false,
+    config: null,
   };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -68,6 +139,7 @@ function parseArgs() {
       case '--retries': cfg.retries = parseInt(args[++i], 10); break;
       case '--concurrency': cfg.concurrency = parseInt(args[++i], 10); break;
       case '--batch': cfg.batch = args[++i]; break;
+      case '--config': cfg.config = args[++i]; break;
       case '--allow-ai-text': cfg.allowAiText = true; break;
       case '--check-prompt': cfg.checkPrompt = true; break;
       case '--help': case '-h': showHelp(); process.exit(0);
@@ -75,6 +147,23 @@ function parseArgs() {
         if (!cfg.promptFile && !a.startsWith('-')) cfg.promptFile = a;
     }
   }
+
+  // --config 指定了自定义配置文件：重新加载并覆盖 QWEN / 默认后端
+  if (cfg.config) {
+    const fileCfg = loadConfigFile(resolve(cfg.config));
+    if (!existsSync(resolve(cfg.config))) {
+      console.error(`Warning: config file not found: ${cfg.config}`);
+    }
+    QWEN.apiKey = cfgValue(fileCfg, 'DASHSCOPE_API_KEY', QWEN.apiKey, 'QWEN_API_KEY');
+    QWEN.baseUrl = cfgValue(fileCfg, 'QWEN_BASE_URL', QWEN.baseUrl);
+    QWEN.model = cfgValue(fileCfg, 'QWEN_MODEL', QWEN.model);
+    QWEN.negativePrompt = cfgValue(fileCfg, 'QWEN_NEGATIVE_PROMPT', QWEN.negativePrompt);
+    if (fileCfg.IMAGE_PROVIDER) DEFAULTS.provider = fileCfg.IMAGE_PROVIDER;
+  }
+
+  // 命令行未显式指定 --provider 时，回退到配置文件/默认后端
+  if (!cfg.provider) cfg.provider = DEFAULTS.provider;
+
   if (cfg.checkPrompt && !cfg.promptFile) {
     console.error('Error: --check-prompt requires --prompt-file');
     showHelp(); process.exit(1);
@@ -93,7 +182,8 @@ Usage:
   generate-image.js --batch <tasks.json> [--concurrency N]
 
 Options:
-  --provider, -p <auto|codex|gemini>   Backend selection (default: auto)
+  --provider, -p <auto|codex|gemini|qwen>   Backend selection
+                                       (default: 配置文件 IMAGE_PROVIDER，缺省 codex)
   --prompt-file <path>                 Prompt markdown file
   --output, -o <path>                  Output image path (verified after generation)
   --aspect-ratio, --ar <W:H>           Aspect ratio (default: 16:9)
@@ -101,6 +191,9 @@ Options:
   --retries <n>                        Retries on failure (default: 1)
   --concurrency <n>                    Parallel batch jobs (default: 3)
   --batch <tasks.json>                 JSON array of {prompt-file, output, aspect-ratio?}
+  --config <path>                      配置文件路径
+                                       (默认 ~/.config/wechat-mp/wechat.env.profile
+                                        或环境变量 IMAGE_CONFIG_FILE)
   --allow-ai-text                      Allow the image model to render readable text.
                                        Off by default because names and poems may be wrong.
   --check-prompt                       Print the final prompt policy result without generating.
@@ -109,6 +202,14 @@ Options:
 Backends:
   codex   — OpenAI Codex CLI (https://openai.com/zh-Hans-CN/codex)
   gemini  — Antigravity CLI (https://antigravity.google/docs/cli-getting-started)
+  qwen    — 阿里云百炼 千问文生图 HTTP API
+
+配置文件 (KEY=VALUE，优先级：命令行 > 配置文件 > 环境变量 > 默认)：
+  IMAGE_PROVIDER        默认后端 codex/gemini/qwen/auto（缺省 codex）
+  DASHSCOPE_API_KEY     千问 API Key（兼容 QWEN_API_KEY）
+  QWEN_MODEL            千问模型（默认 qwen-image-2.0-pro）
+  QWEN_BASE_URL         接口域名（默认 https://dashscope.aliyuncs.com，可改专属/新加坡域名）
+  QWEN_NEGATIVE_PROMPT  反向提示词
 `);
 }
 
@@ -157,9 +258,11 @@ function execCommand(command, args, options = {}) {
 }
 
 async function detectProviders() {
-  const out = { codex: false, gemini: false };
+  const out = { codex: false, gemini: false, qwen: false };
   try { await execCommand('which', ['codex'], { streamStderr: false }); out.codex = true; } catch {}
   try { await execCommand('which', ['agy'], { streamStderr: false }); out.gemini = true; } catch {}
+  // Qwen 是 HTTP API，"可用"取决于是否配置了 API Key，而非本地是否装了 CLI
+  if (QWEN.apiKey) out.qwen = true;
   return out;
 }
 
@@ -397,17 +500,143 @@ async function generateWithGemini(prompt, output, aspectRatio, opts) {
   return { provider: 'gemini', source: candidate.path, output, bytes: destSize };
 }
 
+// ─── Qwen (DashScope) backend ─────────────────────────────────────────────────
+
+/**
+ * 将宽高比映射为 qwen-image-2.0 系列推荐分辨率（总像素 512² ~ 2048²）。
+ * 未命中的比例按比例计算并缩放到 ~2048 长边、8 的倍数，兜底 2048*2048。
+ */
+function qwenSizeForAspect(aspectRatio) {
+  const table = {
+    '16:9': '2688*1536',
+    '9:16': '1536*2688',
+    '1:1': '2048*2048',
+    '4:3': '2368*1728',
+    '3:4': '1728*2368',
+    '2.35:1': '2048*872',
+  };
+  if (table[aspectRatio]) return table[aspectRatio];
+
+  const m = String(aspectRatio || '').match(/^(\d+(?:\.\d+)?)\s*[:x×]\s*(\d+(?:\.\d+)?)$/);
+  if (m) {
+    const w = parseFloat(m[1]), h = parseFloat(m[2]);
+    if (w > 0 && h > 0) {
+      const long = 2048;
+      const round8 = n => Math.max(512, Math.min(2048, Math.round(n / 8) * 8));
+      const [width, height] = w >= h
+        ? [long, round8(long * h / w)]
+        : [round8(long * w / h), long];
+      return `${round8(width)}*${round8(height)}`;
+    }
+  }
+  return '2048*2048';
+}
+
+/**
+ * Qwen 文生图工作流（同步接口）：
+ *  1. POST 提示词到 DashScope multimodal-generation 接口
+ *  2. 响应含临时图像 URL（24h 有效）
+ *  3. 下载图像字节并写入 --output，校验非空
+ */
+async function generateWithQwen(prompt, output, aspectRatio, opts) {
+  if (!QWEN.apiKey) {
+    throw new Error('Qwen 后端需要 API Key：请设置环境变量 DASHSCOPE_API_KEY（或 QWEN_API_KEY）。');
+  }
+  const url = QWEN.baseUrl.replace(/\/+$/, '') + QWEN_API_PATH;
+  const size = qwenSizeForAspect(aspectRatio);
+  if (opts.verbose) console.log(`   qwen model=${QWEN.model} size=${size}`);
+
+  const body = {
+    model: QWEN.model,
+    input: {
+      messages: [{ role: 'user', content: [{ text: prompt }] }],
+    },
+    parameters: {
+      negative_prompt: QWEN.negativePrompt,
+      prompt_extend: true,
+      watermark: false,
+      size,
+      n: 1,
+    },
+  };
+
+  const controller = new AbortController();
+  const to = opts.timeoutMs ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
+  let data;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${QWEN.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    if (!res.ok) {
+      const detail = data.message || data.raw || `HTTP ${res.status}`;
+      throw new Error(`Qwen API 调用失败 (${res.status} ${data.code || ''}): ${String(detail).slice(0, 300)}`);
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Qwen API 请求超时（${opts.timeoutMs}ms）`);
+    }
+    throw err;
+  } finally {
+    if (to) clearTimeout(to);
+  }
+
+  // 提取图像 URL：output.choices[0].message.content[].image
+  const choices = data?.output?.choices;
+  let imageUrl = null;
+  if (Array.isArray(choices)) {
+    for (const c of choices) {
+      const content = c?.message?.content;
+      if (Array.isArray(content)) {
+        const withImage = content.find(x => x && x.image);
+        if (withImage) { imageUrl = withImage.image; break; }
+      }
+    }
+  }
+  if (!imageUrl) {
+    throw new Error(`Qwen 返回成功但未找到图像 URL。响应片段：${JSON.stringify(data).slice(0, 300)}`);
+  }
+
+  // 下载图像字节
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) {
+    throw new Error(`下载 Qwen 图像失败 (HTTP ${imgRes.status}): ${imageUrl.slice(0, 120)}`);
+  }
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+  if (buf.length < 1024) {
+    throw new Error(`Qwen 图像字节异常小（${buf.length} bytes），疑似下载失败`);
+  }
+
+  await mkdir(dirname(resolve(output)), { recursive: true });
+  await writeFile(output, buf);
+  const destSize = await fileSize(output);
+  if (destSize === 0) throw new Error(`写入成功但 ${output} 为空`);
+
+  return { provider: 'qwen', source: imageUrl, output, bytes: destSize };
+}
+
 // ─── Orchestration ──────────────────────────────────────────────────────────
 
 async function pickProvider(requested, available) {
   if (requested === 'auto') {
     if (available.codex) return 'codex';
     if (available.gemini) return 'gemini';
-    throw new Error('No image generation backend available. Install codex-cli or agy.');
+    if (available.qwen) return 'qwen';
+    throw new Error('No image generation backend available. Install codex-cli / agy, or set DASHSCOPE_API_KEY for qwen.');
   }
   if (!available[requested]) {
-    const tool = requested === 'codex' ? 'codex-cli' : 'agy (Antigravity CLI)';
-    throw new Error(`Provider "${requested}" is not available. Install ${tool}.`);
+    const tool = requested === 'codex' ? 'codex-cli'
+      : requested === 'gemini' ? 'agy (Antigravity CLI)'
+      : requested === 'qwen' ? 'qwen (设置 DASHSCOPE_API_KEY 环境变量)'
+      : requested;
+    throw new Error(`Provider "${requested}" is not available. Install/configure ${tool}.`);
   }
   return requested;
 }
@@ -426,7 +655,9 @@ async function runOne(task, providers, opts) {
     const attemptLabel = maxAttempts > 1 ? ` (attempt ${attempt}/${maxAttempts})` : '';
     console.log(`${tag} Generating via ${provider}${attemptLabel}...`);
     try {
-      const fn = provider === 'codex' ? generateWithCodex : generateWithGemini;
+      const fn = provider === 'codex' ? generateWithCodex
+        : provider === 'gemini' ? generateWithGemini
+        : generateWithQwen;
       const result = await fn(prompt, task.output, task.aspectRatio || opts.aspectRatio, {
         timeoutMs: opts.timeoutMs,
         verbose: opts.verbose ?? true,
