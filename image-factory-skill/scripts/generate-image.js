@@ -38,6 +38,21 @@ const DEFAULTS = {
   concurrency: 3,              // for batch mode
 };
 
+// 动态导入 qwen-image-generator（ESM 模块）
+let qwenGenerator = null;
+async function getQwenGenerator() {
+  if (!qwenGenerator) {
+    try {
+      const module = await import('./qwen-image-generator.js');
+      qwenGenerator = module;
+    } catch (err) {
+      // 模块不存在或加载失败时忽略
+      qwenGenerator = { notAvailable: true };
+    }
+  }
+  return qwenGenerator.notAvailable ? null : qwenGenerator;
+}
+
 const CODEX_GENERATED_DIR = join(homedir(), '.codex', 'generated_images');
 
 // Process-wide set of codex source images already claimed by a task in this run.
@@ -103,7 +118,7 @@ Usage:
   generate-image.js --batch <tasks.json> [--concurrency N]
 
 Options:
-  --provider, -p <auto|codex|gemini>   Backend selection (default: auto)
+  --provider, -p <auto|codex|gemini|qwen>  Backend selection (default: auto)
   --prompt-file <path>                 Prompt markdown file
   --output, -o <path>                  Output image path (verified after generation)
   --aspect-ratio, --ar <W:H>           Aspect ratio (default: 16:9)
@@ -118,6 +133,7 @@ Options:
 Backends:
   codex   — OpenAI Codex CLI (https://openai.com/zh-Hans-CN/codex)
   gemini  — Antigravity CLI (https://antigravity.google/docs/cli-getting-started)
+  qwen    — 通义千问 Qwen-Image API (需配置 DASHSCOPE_API_KEY 和 DASHSCOPE_WORKSPACE_ID)
 `);
 }
 
@@ -166,9 +182,19 @@ function execCommand(command, args, options = {}) {
 }
 
 async function detectProviders() {
-  const out = { codex: false, gemini: false };
+  const out = { codex: false, gemini: false, qwen: false };
   try { await execCommand('which', ['codex'], { streamStderr: false }); out.codex = true; } catch {}
   try { await execCommand('which', ['agy'], { streamStderr: false }); out.gemini = true; } catch {}
+
+  // 检测 qwen（通过检查配置和模块是否可用）
+  const qwen = await getQwenGenerator();
+  if (qwen) {
+    try {
+      const config = await qwen.loadEnv();
+      out.qwen = !!(config.apiKey && config.workspaceId);
+    } catch {}
+  }
+
   return out;
 }
 
@@ -369,17 +395,70 @@ async function generateWithGemini(prompt, output, aspectRatio, opts) {
   return { provider: 'gemini', source: candidate.path, output, bytes: destSize };
 }
 
+// ─── Qwen backend ───────────────────────────────────────────────────────────
+
+/**
+ * Qwen (通义千问) workflow:
+ *  1. Call Qwen API with prompt and parameters
+ *  2. Get image URL(s) from response
+ *  3. Download image(s) to output path
+ *  4. Verify file size and existence
+ */
+async function generateWithQwen(prompt, output, aspectRatio, opts) {
+  const qwen = await getQwenGenerator();
+  if (!qwen) {
+    throw new Error('Qwen generator module not available');
+  }
+
+  try {
+    // 调用通义千问 API 生成图片
+    const result = await qwen.generateWithQwen(prompt, {
+      aspectRatio,
+      timeout: opts.timeoutMs,
+    });
+
+    if (!result.urls || result.urls.length === 0) {
+      throw new Error('Qwen API returned no images');
+    }
+
+    // 下载第一张图片到指定路径
+    await qwen.downloadImage(result.urls[0], output);
+
+    const destSize = await fileSize(output);
+    if (destSize === 0) {
+      throw new Error(`Downloaded image but ${output} is empty`);
+    }
+
+    return {
+      provider: 'qwen',
+      source: result.urls[0],
+      output,
+      bytes: destSize,
+      model: result.model,
+      requestId: result.requestId,
+    };
+  } catch (err) {
+    throw new Error(`Qwen generation failed: ${err.message}`);
+  }
+}
+
 // ─── Orchestration ──────────────────────────────────────────────────────────
 
 async function pickProvider(requested, available) {
   if (requested === 'auto') {
+    if (available.qwen) return 'qwen';
     if (available.codex) return 'codex';
     if (available.gemini) return 'gemini';
-    throw new Error('No image generation backend available. Install codex-cli or agy.');
+    throw new Error('No image generation backend available. Install codex-cli, agy, or configure Qwen API.');
   }
   if (!available[requested]) {
-    const tool = requested === 'codex' ? 'codex-cli' : 'agy (Antigravity CLI)';
-    throw new Error(`Provider "${requested}" is not available. Install ${tool}.`);
+    const hints = {
+      codex: 'codex-cli',
+      gemini: 'agy (Antigravity CLI)',
+      qwen: 'Configure DASHSCOPE_API_KEY and DASHSCOPE_WORKSPACE_ID in .env',
+    };
+    const hint = hints[requested] || requested;
+    throw new Error(`Provider "${requested}" is not available. ${hint}`);
   }
   return requested;
 }
@@ -397,7 +476,9 @@ async function runOne(task, providers, opts) {
     const attemptLabel = maxAttempts > 1 ? ` (attempt ${attempt}/${maxAttempts})` : '';
     console.log(`${tag} Generating via ${provider}${attemptLabel}...`);
     try {
-      const fn = provider === 'codex' ? generateWithCodex : generateWithGemini;
+      const fn = provider === 'codex' ? generateWithCodex
+                : provider === 'gemini' ? generateWithGemini
+                : generateWithQwen;
       const result = await fn(prompt, task.output, task.aspectRatio || opts.aspectRatio, {
         timeoutMs: opts.timeoutMs,
         verbose: opts.verbose ?? true,
