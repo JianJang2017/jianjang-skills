@@ -24,7 +24,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, copyFile, stat, readdir, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, stat, readdir, mkdir, mkdtemp, symlink, rm } from 'node:fs/promises';
 import { resolve, dirname, basename, join, extname } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 
@@ -68,11 +68,8 @@ async function getBlGenerator() {
   return blGenerator.notAvailable ? null : blGenerator;
 }
 
-const CODEX_GENERATED_DIR = join(homedir(), '.codex', 'generated_images');
-
-// Process-wide set of codex source images already claimed by a task in this run.
-// Prevents two concurrent batch tasks from copying the same source.
-const CLAIMED_CODEX_SOURCES = new Set();
+// Real codex home — its auth/config are symlinked into each isolated CODEX_HOME.
+const CODEX_HOME_DIR = process.env.CODEX_HOME || join(homedir(), '.codex');
 
 // ─── Argument parsing ───────────────────────────────────────────────────────
 
@@ -272,88 +269,84 @@ async function findNewestImage(dir, sinceMs) {
 
 // ─── Codex backend ──────────────────────────────────────────────────────────
 
+// Config/auth entries symlinked into each isolated CODEX_HOME so codex can
+// authenticate and load config while writing images into an isolated dir.
+const CODEX_LINK_ENTRIES = [
+  'auth.json',
+  'config.toml',
+  '.codex-global-state.json',
+  '.codex-global-state.json.bak',
+];
+
 /**
- * Codex CLI workflow:
- *  1. Snapshot the set of existing codex session dirs before invocation
- *  2. Ask codex exec to generate the image
- *  3. Codex writes to ~/.codex/generated_images/<new-session>/<random>.png
- *  4. Locate the *new* session dir (set difference) and pick its newest image
- *     — this is concurrency-safe: each codex exec creates a fresh session dir
- *  5. Copy to requested output path and verify
+ * Codex CLI workflow (concurrency-safe by physical isolation):
+ *  1. Create a private temp CODEX_HOME and symlink auth/config into it
+ *  2. Run `codex exec` with CODEX_HOME pointed at that dir
+ *  3. Codex writes to <CODEX_HOME>/generated_images/<session>/<random>.png —
+ *     a directory NO other concurrent task can see, so there is no cross-task
+ *     race when locating the result (the old mtime "pick newest" heuristic
+ *     could steal a sibling task's image under concurrency)
+ *  4. Pick the newest image under this private dir, copy to output, verify
+ *  5. Remove the temp CODEX_HOME
  */
 async function generateWithCodex(prompt, output, aspectRatio, opts) {
-  const sinceMs = Date.now() - 5000;
-  const beforeSessions = new Set(await listCodexSessions());
-
-  const fullPrompt =
-    `Generate an image and save it to ${output}.\n\n` +
-    `Prompt:\n${prompt}\n\n` +
-    `Aspect ratio: ${aspectRatio}\n\n` +
-    `Use your image generation capability. After generation, the file should be available ` +
-    `under ~/.codex/generated_images/. Do not return placeholder text.`;
-
-  // codex exec 偶尔以非零码退出（例如它内部的某个工具步骤报错），但图片其实已经
-  // 写到了 ~/.codex/generated_images/<session>/。所以这里不让非零退出直接失败：
-  // 先记下错误，照常走下面的"找回新生成图"逻辑；找到有效图就算成功，找不到才抛错。
-  let execErr = null;
+  const codexHome = await mkdtemp(join(tmpdir(), 'codex-home-'));
   try {
-    await execCommand('codex', ['exec', '--skip-git-repo-check', fullPrompt], {
-      streamStderr: opts.verbose,
-      timeoutMs: opts.timeoutMs,
-    });
-  } catch (e) {
-    execErr = e;
-  }
-
-  // Find the new session dir(s) created by this invocation
-  const afterSessions = await listCodexSessions();
-  const newSessions = afterSessions.filter(s => !beforeSessions.has(s));
-
-  let found = null;
-  if (newSessions.length > 0) {
-    // Search only new session dirs — concurrency-safe
-    // Collect all candidate images, sort by mtime desc, pick first unclaimed
-    const candidates = [];
-    for (const sessionDir of newSessions) {
-      const img = await findNewestImage(sessionDir, sinceMs);
-      if (img) candidates.push(img);
+    // Link auth/config so the isolated home can authenticate like the real one.
+    for (const entry of CODEX_LINK_ENTRIES) {
+      const src = join(CODEX_HOME_DIR, entry);
+      if (await exists(src)) {
+        try { await symlink(src, join(codexHome, entry)); } catch {}
+      }
     }
-    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    for (const c of candidates) {
-      if (!CLAIMED_CODEX_SOURCES.has(c.path)) { found = c; break; }
+    const genDir = join(codexHome, 'generated_images');
+    const sinceMs = Date.now() - 5000;
+
+    const fullPrompt =
+      `Generate an image and save it to ${output}.\n\n` +
+      `Prompt:\n${prompt}\n\n` +
+      `Aspect ratio: ${aspectRatio}\n\n` +
+      `Use your image generation capability. After generation, the file should be available ` +
+      `under your generated_images directory. Do not return placeholder text.`;
+
+    // codex exec 偶尔以非零码退出（内部某个工具步骤报错），但图片其实已经写到了
+    // generated_images/<session>/。所以不让非零退出直接失败：先记下错误，照常走
+    // 下面的"找回新生成图"逻辑；找到有效图就算成功，找不到才抛错。
+    let execErr = null;
+    try {
+      await execCommand('codex', ['exec', '--skip-git-repo-check', fullPrompt], {
+        streamStderr: opts.verbose,
+        timeoutMs: opts.timeoutMs,
+        env: { ...process.env, CODEX_HOME: codexHome },
+      });
+    } catch (e) {
+      execErr = e;
     }
-  } else {
-    // Fallback: scan whole generated_images dir for unclaimed images
-    const img = await findNewestImage(CODEX_GENERATED_DIR, sinceMs);
-    if (img && !CLAIMED_CODEX_SOURCES.has(img.path)) found = img;
-  }
 
-  if (!found) {
-    // 既没找回图，codex 又非零退出 → 这才是真失败，把底层错误一并抛出便于排查
-    if (execErr) {
-      throw new Error(`Codex 执行失败且未产出图片: ${execErr.message}`);
+    // The generated_images dir is private to this invocation, so the newest
+    // image in it is unambiguously ours — no cross-task claiming needed.
+    const found = await findNewestImage(genDir, sinceMs);
+
+    if (!found) {
+      if (execErr) {
+        throw new Error(`Codex 执行失败且未产出图片: ${execErr.message}`);
+      }
+      throw new Error(`Codex returned but no image found under ${genDir}`);
     }
-    throw new Error(`Codex returned but no unclaimed image found under ${CODEX_GENERATED_DIR}`);
+    if (found.size < 1024) {
+      throw new Error(`Codex produced an image but it is suspiciously small (${found.size} bytes): ${found.path}`);
+    }
+
+    await mkdir(dirname(resolve(output)), { recursive: true });
+    await copyFile(found.path, output);
+    const destSize = await fileSize(output);
+    if (destSize === 0) throw new Error(`Copy succeeded but ${output} is empty`);
+
+    return { provider: 'codex', source: found.path, output, bytes: destSize };
+  } finally {
+    // Clean up the temp home; symlinks are removed, real config is untouched.
+    try { await rm(codexHome, { recursive: true, force: true }); } catch {}
   }
-  CLAIMED_CODEX_SOURCES.add(found.path);
-  if (found.size < 1024) {
-    throw new Error(`Codex produced an image but it is suspiciously small (${found.size} bytes): ${found.path}`);
-  }
-
-  await mkdir(dirname(resolve(output)), { recursive: true });
-  await copyFile(found.path, output);
-  const destSize = await fileSize(output);
-  if (destSize === 0) throw new Error(`Copy succeeded but ${output} is empty`);
-
-  return { provider: 'codex', source: found.path, output, bytes: destSize };
-}
-
-async function listCodexSessions() {
-  if (!(await exists(CODEX_GENERATED_DIR))) return [];
-  try {
-    const entries = await readdir(CODEX_GENERATED_DIR, { withFileTypes: true });
-    return entries.filter(e => e.isDirectory()).map(e => join(CODEX_GENERATED_DIR, e.name));
-  } catch { return []; }
 }
 
 // ─── Gemini (agy) backend ───────────────────────────────────────────────────
@@ -638,8 +631,8 @@ async function main() {
   } else if (cfg.count > 1) {
     // Count mode: N distinct images from ONE prompt. Same prompt-file/aspect-ratio,
     // distinct suffixed outputs (-1..-N). codex/agy are non-deterministic, so each
-    // run yields a different image; CLAIMED_CODEX_SOURCES keeps concurrent codex
-    // runs from copying the same source file.
+    // run yields a different image; each codex call now uses an isolated CODEX_HOME
+    // so concurrent runs can't pick up each other's source file.
     tasks = Array.from({ length: cfg.count }, (_, idx) => ({
       promptFile: cfg.promptFile,
       output: suffixOutput(cfg.output, idx + 1),
