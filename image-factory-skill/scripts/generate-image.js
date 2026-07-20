@@ -53,6 +53,21 @@ async function getQwenGenerator() {
   return qwenGenerator.notAvailable ? null : qwenGenerator;
 }
 
+// 动态导入 bl-image-generator（ESM 模块）
+let blGenerator = null;
+async function getBlGenerator() {
+  if (!blGenerator) {
+    try {
+      const module = await import('./bl-image-generator.js');
+      blGenerator = module;
+    } catch (err) {
+      // 模块不存在或加载失败时忽略
+      blGenerator = { notAvailable: true };
+    }
+  }
+  return blGenerator.notAvailable ? null : blGenerator;
+}
+
 const CODEX_GENERATED_DIR = join(homedir(), '.codex', 'generated_images');
 
 // Process-wide set of codex source images already claimed by a task in this run.
@@ -118,7 +133,7 @@ Usage:
   generate-image.js --batch <tasks.json> [--concurrency N]
 
 Options:
-  --provider, -p <auto|codex|gemini|qwen>  Backend selection (default: auto)
+  --provider, -p <auto|codex|gemini|qwen|bl>  Backend selection (default: auto)
   --prompt-file <path>                 Prompt markdown file
   --output, -o <path>                  Output image path (verified after generation)
   --aspect-ratio, --ar <W:H>           Aspect ratio (default: 16:9)
@@ -134,6 +149,7 @@ Backends:
   codex   — OpenAI Codex CLI (https://openai.com/zh-Hans-CN/codex)
   gemini  — Antigravity CLI (https://antigravity.google/docs/cli-getting-started)
   qwen    — 通义千问 Qwen-Image API (需配置 DASHSCOPE_API_KEY 和 DASHSCOPE_WORKSPACE_ID)
+  bl      — 阿里云百炼 CLI (https://bailian.aliyun.com/cli/install.md, 需 bl auth login)
 `);
 }
 
@@ -182,7 +198,7 @@ function execCommand(command, args, options = {}) {
 }
 
 async function detectProviders() {
-  const out = { codex: false, gemini: false, qwen: false };
+  const out = { codex: false, gemini: false, qwen: false, bl: false };
   try { await execCommand('which', ['codex'], { streamStderr: false }); out.codex = true; } catch {}
   try { await execCommand('which', ['agy'], { streamStderr: false }); out.gemini = true; } catch {}
 
@@ -191,9 +207,29 @@ async function detectProviders() {
   if (qwen) {
     try {
       const config = await qwen.loadEnv();
-      out.qwen = !!(config.apiKey && config.workspaceId);
+      // 国内地域（cn-beijing）不需要 workspaceId，只检查 apiKey
+      const regionEndpoints = {
+        'cn-beijing': { requiresWorkspace: false },
+        'ap-southeast-1': { requiresWorkspace: true },
+      };
+      const regionInfo = regionEndpoints[config.region] || { requiresWorkspace: true };
+      out.qwen = !!config.apiKey && (!regionInfo.requiresWorkspace || !!config.workspaceId);
     } catch {}
   }
+
+  // 检测 bl（检查 bl 命令是否可用）
+  try {
+    await execCommand('which', ['bl'], { streamStderr: false });
+    // bl 命令存在，尝试检查认证状态
+    const bl = await getBlGenerator();
+    if (bl) {
+      try {
+        // bl 通过 bl auth status 或 .env 中的 BL_API_KEY 认证
+        // 这里简单检查 bl 命令是否可用即可，认证会在实际调用时检查
+        out.bl = true;
+      } catch {}
+    }
+  } catch {}
 
   return out;
 }
@@ -442,20 +478,84 @@ async function generateWithQwen(prompt, output, aspectRatio, opts) {
   }
 }
 
+// ─── bl backend ─────────────────────────────────────────────────────────────
+
+async function generateWithBl(prompt, output, aspectRatio, opts) {
+  const bl = await getBlGenerator();
+  if (!bl) {
+    throw new Error('bl generator module not available');
+  }
+
+  try {
+    // 调用百炼 CLI 生成图片
+    const result = await bl.generateImage(prompt, {
+      aspectRatio,
+      timeout: opts.timeoutMs / 1000, // bl expects seconds
+    });
+
+    if (!result.urls || result.urls.length === 0) {
+      throw new Error('bl CLI returned no images');
+    }
+
+    // bl CLI 已经保存了图片到 saved[0]，直接复制而不是重新下载
+    if (result.saved && result.saved.length > 0 && await exists(result.saved[0])) {
+      await copyFile(result.saved[0], output);
+    } else {
+      // 备用：从 URL 下载
+      const https = await import('node:https');
+      await new Promise((resolve, reject) => {
+        https.default.get(result.urls[0], (res) => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode} when downloading image`));
+            return;
+          }
+          const chunks = [];
+          res.on('data', chunk => chunks.push(chunk));
+          res.on('end', async () => {
+            try {
+              await writeFile(output, Buffer.concat(chunks));
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          });
+        }).on('error', reject);
+      });
+    }
+
+    const destSize = await fileSize(output);
+    if (destSize === 0) {
+      throw new Error(`Downloaded image but ${output} is empty`);
+    }
+
+    return {
+      provider: 'bl',
+      source: result.urls[0],
+      output,
+      bytes: destSize,
+      model: result.model,
+    };
+  } catch (err) {
+    throw new Error(`bl generation failed: ${err.message}`);
+  }
+}
+
 // ─── Orchestration ──────────────────────────────────────────────────────────
 
 async function pickProvider(requested, available) {
   if (requested === 'auto') {
+    if (available.bl) return 'bl';
     if (available.qwen) return 'qwen';
     if (available.codex) return 'codex';
     if (available.gemini) return 'gemini';
-    throw new Error('No image generation backend available. Install codex-cli, agy, or configure Qwen API.');
+    throw new Error('No image generation backend available. Install codex-cli, agy, bl (bailian-cli), or configure Qwen API.');
   }
   if (!available[requested]) {
     const hints = {
       codex: 'codex-cli',
       gemini: 'agy (Antigravity CLI)',
       qwen: 'Configure DASHSCOPE_API_KEY and DASHSCOPE_WORKSPACE_ID in .env',
+      bl: 'bl (bailian-cli) - run: npm install -g bailian-cli && bl auth login',
     };
     const hint = hints[requested] || requested;
     throw new Error(`Provider "${requested}" is not available. ${hint}`);
@@ -478,7 +578,8 @@ async function runOne(task, providers, opts) {
     try {
       const fn = provider === 'codex' ? generateWithCodex
                 : provider === 'gemini' ? generateWithGemini
-                : generateWithQwen;
+                : provider === 'qwen' ? generateWithQwen
+                : generateWithBl;
       const result = await fn(prompt, task.output, task.aspectRatio || opts.aspectRatio, {
         timeoutMs: opts.timeoutMs,
         verbose: opts.verbose ?? true,

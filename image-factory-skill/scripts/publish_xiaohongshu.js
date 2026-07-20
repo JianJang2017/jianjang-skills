@@ -149,7 +149,7 @@ function parseArgs() {
   const cfg = {
     images: [],
     prompt: null,           // NEW: 直接给文字 prompt，先生图再发布
-    provider: 'auto',       // NEW: 生图后端 auto|codex|gemini
+    provider: 'auto',       // NEW: 生图后端 auto|codex|gemini|qwen|bl
     aspectRatio: '3:4',     // NEW: 生图宽高比（小红书竖图友好，默认 3:4）
     output: null,           // NEW: 生成图片保存路径（缺省用临时文件）
     count: 1,               // NEW: 同一 prompt 生成 N 张不同图，作为一条多图笔记发布
@@ -220,7 +220,7 @@ function printHelp() {
                            也用于在缺 --title/--content 时自动推导
 
 生图选项（仅在用 --prompt/--prompt-file 生成时有效）:
-  --provider <auto|codex|gemini>  生图后端（默认 auto）
+  --provider <auto|codex|gemini|qwen|bl>  生图后端（默认 auto: bl > qwen > codex > gemini）
   --aspect-ratio, --ar <W:H>      宽高比（默认 3:4，小红书竖图友好）
   --output, -o <路径>             生成图保存路径（默认临时文件）
   --count, -n <N>                 同一 prompt 生成 N 张不同图，作为一条多图笔记发布（默认 1）

@@ -614,8 +614,8 @@ def main():
     parser.add_argument("--aspect-ratio", default="9:16", help="图片宽高比，默认 9:16（竖版，适配自媒体）")
     parser.add_argument("--count", "-n", type=int, default=1,
                         help="同一个 prompt 生成 N 张不同的图，合成一条多图消息发送（默认 1）")
-    parser.add_argument("--provider", default="auto", choices=["auto", "codex", "gemini", "qwen"],
-                        help="图片生成后端，默认 auto（qwen > codex > gemini）")
+    parser.add_argument("--provider", default="auto", choices=["auto", "codex", "gemini", "qwen", "bl"],
+                        help="图片生成后端，默认 auto（bl > qwen > codex > gemini）")
     parser.add_argument("--output", help="生成图片的保存路径（默认临时文件）")
     parser.add_argument("--as", dest="identity", choices=["bot", "user", "auto"],
                         default=None, help="发送身份，默认读 .env 的 FEISHU_SEND_AS（缺省 bot）")

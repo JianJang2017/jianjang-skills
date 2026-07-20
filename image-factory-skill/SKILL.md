@@ -98,8 +98,10 @@ The same prompt run N times produces N different images (codex/agy are non-deter
 Outputs are suffixed `-1..-N` off the base `--output` path.
 
 **The script:**
-- Auto-detects available backends (codex-cli or agy)
-- Supports two providers:
+- Auto-detects available backends (codex-cli, agy, qwen, or bl)
+- Supports four providers:
+  - **bl**: 阿里云百炼 CLI (bailian-cli) - 免费模型优先推荐
+  - **qwen**: 通义千问 Qwen-Image API
   - **codex-cli**: OpenAI Codex image generation
   - **gemini (agy)**: Google Antigravity CLI
 - Includes timeout (5 min) and retry (1 attempt)
@@ -961,7 +963,22 @@ See `references/feishu-cli-guide.md` for detailed setup and troubleshooting.
 
 The skill requires **at least one** of these tools:
 
-### Codex CLI (Recommended)
+### 百炼 CLI (推荐，免费)
+- **Command**: `bl`
+- **Install**: `npm install -g bailian-cli`
+- **Verify**: `bl --version`
+- **Auth**: `bl auth login --console` (浏览器登录) 或 `bl auth login --api-key <key>`
+- **Free Model**: qwen-image-2.0-pro-2026-04-22 (默认)
+- **Docs**: https://bailian.aliyun.com/cli/install.md
+
+### 通义千问 API
+- **Command**: qwen-image-generator.js (内部模块)
+- **Setup**: 配置 `.env` 中的 `DASHSCOPE_API_KEY`
+- **Region**: 国内地域 (cn-beijing) 无需 `DASHSCOPE_WORKSPACE_ID`
+- **Models**: qwen-image-2.0-pro-2026-04-22, qwen-image-max, qwen-image-plus
+- **Docs**: https://help.aliyun.com/zh/model-studio/text-to-image
+
+### Codex CLI
 - **Command**: `codex`
 - **Install**: https://openai.com/zh-Hans-CN/codex or `npm install -g codex-cli`
 - **Verify**: `codex --version`
@@ -972,16 +989,19 @@ The skill requires **at least one** of these tools:
 - **Install**: https://antigravity.google/docs/cli-getting-started
 - **Verify**: `agy --version`
 
-The `generate-image.js` script auto-detects which backend is available and uses it. If both are available, it prefers codex by default.
+The `generate-image.js` script auto-detects which backend is available and uses it. If multiple are available, it prefers: **bl > qwen > codex > gemini**.
 
 ## Error Handling
 
 ### Common Errors
 
 **Generation failures:**
-- `No image generation backend available` → Install codex-cli or agy
+- `No image generation backend available` → Install bl, codex-cli, agy, or configure qwen API
+- `Provider "xxx" is not available` → Install the requested backend or use `--provider auto`
 - `Command timed out` → Image generation took >5 minutes, may succeed on retry
 - `Codex returned but no image found` → Check `~/.codex/generated_images/` permissions
+- `Qwen API returned no images` → Check DASHSCOPE_API_KEY in `.env`
+- `bl generation failed` → Run `bl auth status` to check authentication
 
 **Feishu send failures:**
 - `230002: Bot/User can NOT be out of the chat` → Bot must be added to the group first
