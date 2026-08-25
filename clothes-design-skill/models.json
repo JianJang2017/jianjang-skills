@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Image generation model configurations for image-factory-skill",
+  "providers": {
+    "bl": {
+      "name": "阿里云百炼 CLI",
+      "command": "bl",
+      "models": [
+        {
+          "id": "qwen-image-2.0-pro-2026-04-22",
+          "name": "Qwen-Image 2.0 Pro (2026-04-22)",
+          "description": "通义千问图像生成 2.0 Pro 最新版本（免费）",
+          "default": true,
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark", "seed"]
+        },
+        {
+          "id": "qwen-image-2.0-pro",
+          "name": "Qwen-Image 2.0 Pro",
+          "description": "通义千问图像生成 2.0 专业版，更高质量",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark", "seed"]
+        },
+        {
+          "id": "qwen-image-2.0",
+          "name": "Qwen-Image 2.0 标准版",
+          "description": "通义千问图像生成 2.0 标准版（付费），平衡质量与速度",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark", "seed"]
+        },
+        {
+          "id": "wan2.6-t2i",
+          "name": "通义万相 2.6 文生图",
+          "description": "通义万相 2.6 文本生成图像模型",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark", "seed"]
+        },
+        {
+          "id": "wan2.6-portrait",
+          "name": "通义万相 2.6 人像",
+          "description": "通义万相 2.6 人像专用模型",
+          "aspectRatios": ["9:16", "3:4", "1:1"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark", "seed"]
+        },
+        {
+          "id": "wan2.6-product",
+          "name": "通义万相 2.6 商品",
+          "description": "通义万相 2.6 商品图专用模型",
+          "aspectRatios": ["1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark", "seed"]
+        }
+      ]
+    },
+    "qwen": {
+      "name": "通义千问 API",
+      "command": "qwen-image-generator.js",
+      "models": [
+        {
+          "id": "qwen-image-2.0",
+          "name": "Qwen-Image 2.0",
+          "description": "通义千问图像生成 2.0 加速版，效果与性能平衡",
+          "default": true,
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark"]
+        },
+        {
+          "id": "qwen-image-2.0-pro",
+          "name": "Qwen-Image 2.0 Pro",
+          "description": "通义千问图像生成 2.0 Pro 系列",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark"]
+        },
+        {
+          "id": "qwen-image-2.0-pro-2026-04-22",
+          "name": "Qwen-Image 2.0 Pro (2026-04-22)",
+          "description": "通义千问图像生成 2.0 Pro 最新版本",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 6,
+          "features": ["prompt-extend", "watermark"]
+        },
+        {
+          "id": "qwen-image-max",
+          "name": "Qwen-Image Max",
+          "description": "Max 系列，真实感与自然度更强",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 1,
+          "features": ["prompt-extend", "watermark"]
+        },
+        {
+          "id": "qwen-image-plus",
+          "name": "Qwen-Image Plus",
+          "description": "Plus 系列，多样化艺术风格与文字渲染",
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 1,
+          "features": ["prompt-extend", "watermark"]
+        }
+      ]
+    },
+    "codex": {
+      "name": "OpenAI Codex CLI",
+      "command": "codex",
+      "models": [
+        {
+          "id": "default",
+          "name": "Codex Default",
+          "description": "OpenAI Codex 默认图像生成模型",
+          "default": true,
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 1,
+          "features": []
+        }
+      ]
+    },
+    "gemini": {
+      "name": "Google Antigravity CLI",
+      "command": "agy",
+      "models": [
+        {
+          "id": "default",
+          "name": "Gemini Default",
+          "description": "Google Antigravity 默认图像生成模型",
+          "default": true,
+          "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+          "maxImages": 1,
+          "features": []
+        }
+      ]
+    }
+  },
+  "defaults": {
+    "provider": "auto",
+    "providerPriority": ["bl", "qwen", "codex", "gemini"],
+    "aspectRatio": "9:16",
+    "promptExtend": true,
+    "watermark": false,
+    "imageCount": 1
+  }
+}
