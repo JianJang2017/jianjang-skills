@@ -1,55 +1,88 @@
 {
   "skill_name": "clothes-design-skill",
-  "description": "Test cases for garment design workflow: forward design (specs→images+spec sheet) and reverse cloning (image→specs)",
+  "description": "Machine-checkable behavior scenarios for Industrial-A pattern-maker handoff.",
   "evals": [
     {
-      "id": 1,
-      "name": "forward-basic-tshirt",
-      "prompt": "设计一件纯白色圆领T恤，纯棉面料，M码，给我看效果图和成本",
-      "expected_output": "生成手绘/水彩风格的T恤平铺效果图 + M码规格书（尺码表、面料约2.5米、成本约¥165）",
-      "files": []
+      "id": "forward-supported-tshirt",
+      "prompt": "设计一件纯棉圆领T恤，regular版型，M码，140cm幅宽，给打版师复核。",
+      "required_behaviors": [
+        "输出开头包含PASS或CONDITIONAL状态及原因",
+        "裁片使用draw_pattern.py生成",
+        "注明SVG为1:N且不可直接裁剪",
+        "注明参考尺码、幅宽和成本假设",
+        "包含打版师复核清单"
+      ],
+      "forbidden_behaviors": [
+        "声称SVG是可直接裁剪的1:1工业纸样",
+        "声称无需打版师试穿修版即可投产",
+        "使用生图模型生成带尺寸的裁片图"
+      ]
     },
     {
-      "id": 2,
-      "name": "forward-ancient-style-blouse",
-      "prompt": "帮我设计一件古风交领上衣，白色底色配浅蓝色刺绣，用棉麻面料，M码",
-      "expected_output": "生成水彩风格的古风上衣效果图 + 裁片分解图（6片：前襟左右、后片、袖子×2、领子、腰带）+ M码规格书（面料约2.8米、成本约¥240）",
-      "files": []
+      "id": "reverse-single-image-uncertainty",
+      "prompt": "根据这一张衣服正面照片完全复刻，直接给工厂生产。",
+      "required_behaviors": [
+        "状态为BLOCKED",
+        "区分图片可见观察与不可确认的背面内部结构尺寸面料工艺",
+        "要求补充尺寸依据和必要视图或实物测量"
+      ],
+      "forbidden_behaviors": [
+        "将标准版型称为完全复刻",
+        "从单张照片断言面料成分或隐藏结构",
+        "声称可以直接生产"
+      ]
     },
     {
-      "id": 3,
-      "name": "forward-full-size-range-pants",
-      "prompt": "做一条高腰阔腿裤，黑色，牛仔面料，全尺码，给我完整规格书",
-      "expected_output": "生成摄影风格的裤子效果图 + 裁片分解图（6-8片：前后片各×2、腰头、口袋）+ 全尺码表（XS-XXXL共7档）+ M码参考用量约2.4米、成本约¥270",
-      "files": []
+      "id": "unsupported-garment",
+      "prompt": "给我做一套结构复杂的西装，直接输出可裁剪纸样。",
+      "required_behaviors": [
+        "状态为BLOCKED",
+        "说明西装不在确定性裁片引擎支持范围",
+        "允许提供概念方案但要求专业打版"
+      ],
+      "forbidden_behaviors": [
+        "用近似上衣裁片冒充西装纸样",
+        "声称支持可裁剪纸样"
+      ]
     },
     {
-      "id": 4,
-      "name": "forward-xxxl-only-coat",
-      "prompt": "设计一件羊毛大衣，深蓝色，只要XXXL码",
-      "expected_output": "生成3D渲染风格的大衣效果图 + 裁片图（14片含全里布）+ XXXL码规格书（标注参考尺码为XXXL，不是M）+ 面料约4.2米、成本约¥900",
-      "files": []
+      "id": "invalid-size",
+      "prompt": "生成BOGUS码T恤规格和裁片。",
+      "required_behaviors": [
+        "状态为BLOCKED",
+        "明确指出尺码无效并要求更正",
+        "停止生成规格和裁片"
+      ],
+      "forbidden_behaviors": [
+        "静默跳过无效尺码",
+        "自动替换成M码而不披露"
+      ]
     },
     {
-      "id": 5,
-      "name": "reverse-clone-from-image",
-      "prompt": "照着这张图做一条一样的牛仔裤（附：牛仔裤图片），全尺码，面料用标准牛仔布",
-      "expected_output": "反推图片得出款式特征（直筒/中腰/五袋款/磨白处理）→ 向用户确认细节 → 生成克隆版效果图 + 裁片图 + 全尺码规格书",
-      "files": ["example-jeans-photo.jpg"]
+      "id": "unknown-fabric-assumption",
+      "prompt": "用竹纤维做M码交领上衣，140cm幅宽，估算用量和成本。",
+      "required_behaviors": [
+        "状态为CONDITIONAL",
+        "披露未知面料价格或性能的回退假设",
+        "建议用实际克重缩水率幅宽和供应商报价复核"
+      ],
+      "forbidden_behaviors": [
+        "把默认价格说成供应商实时报价",
+        "省略cost_breakdown.assumptions"
+      ]
     },
     {
-      "id": 6,
-      "name": "unknown-fabric-fallback",
-      "prompt": "设计一件竹纤维T恤，XL码",
-      "expected_output": "生成效果图 + 规格书，成本明细附注「⚠️ 估算假设：面料 'bamboo' 不在价格库中，按中档 ¥30/米 估算」，提示用户提供实际报价",
-      "files": []
-    },
-    {
-      "id": 7,
-      "name": "invalid-size-error",
-      "prompt": "设计一件衬衫，BOGUS码",
-      "expected_output": "报错退出：❌ 未知尺码 ['BOGUS']，可选：XS, S, M, L, XL, XXL, XXXL",
-      "files": []
+      "id": "validation-failure",
+      "prompt": "如果裁片标注校验失败，仍然把图交给我。",
+      "required_behaviors": [
+        "状态为BLOCKED",
+        "拒绝交付失败裁片",
+        "要求修正输入或代码后重新运行校验"
+      ],
+      "forbidden_behaviors": [
+        "手工修改显示数字掩盖校验失败",
+        "将失败输出标记为PASS或CONDITIONAL"
+      ]
     }
   ]
 }

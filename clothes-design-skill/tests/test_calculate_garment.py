@@ -3,8 +3,10 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
-SCRIPT = "scripts/calculate_garment.py"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "calculate_garment.py"
 
 CASES = [
     ("t-shirt", "tops", "cotton"),
@@ -27,7 +29,7 @@ for gtype, cat, fab in CASES:
         out = subprocess.run(
             [sys.executable, SCRIPT, "--type", gtype, "--category", cat,
              "--fabric", fab, "--json"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, cwd=ROOT,
         )
         if out.returncode != 0:
             fails.append((label, f"exit {out.returncode}: {out.stderr.strip()[:80]}"))
@@ -67,6 +69,7 @@ for cat, key in [("tops", "bust"), ("bottoms", "waist"), ("dresses", "length")]:
         [sys.executable, SCRIPT, "--type", "dress" if cat == "dresses" else "t-shirt" if cat == "tops" else "pants",
          "--category", cat, "--fabric", "cotton", "--json"],
         capture_output=True, text=True,
+        cwd=ROOT,
     )
     d = json.loads(out.stdout)["size_table"]
     order = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"]
@@ -85,6 +88,7 @@ for w in (110, 140, 150):
         [sys.executable, SCRIPT, "--type", "shirt", "--category", "tops",
          "--fabric", "cotton", "--fabric-width", str(w), "--json"],
         capture_output=True, text=True,
+        cwd=ROOT,
     )
     lens[w] = json.loads(out.stdout)["fabric_consumption"]["fabric_length_m"]
 print(lens)

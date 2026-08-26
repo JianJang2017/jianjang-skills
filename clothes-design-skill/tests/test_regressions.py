@@ -3,14 +3,18 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
-SCRIPT = "scripts/calculate_garment.py"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "calculate_garment.py"
 PY = sys.executable
 fails = []
 
 
 def run(*args):
-    return subprocess.run([PY, SCRIPT, *args], capture_output=True, text=True, timeout=30)
+    return subprocess.run(
+        [PY, SCRIPT, *args], capture_output=True, text=True, timeout=30, cwd=ROOT
+    )
 
 
 def check(name, cond, detail=""):
