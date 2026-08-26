@@ -495,7 +495,7 @@ def draft_tshirt(m: Dict[str, float], fit: str = "regular") -> List[Piece]:
     back.dims = [
         Dim("h", (0, length), (quarter, length), f"1/4胸围+放松量 {quarter:.1f}", offset=3.5),
         Dim("v", (0, 0), (0, length), f"衣长 {length:.0f}", offset=-3.5),
-        Dim("v", (0, 0), (0, back_neck_drop), f"后领深 {back_neck_drop:.1f}", offset=2.0),
+        Dim("v", (0, 0), (0, back_neck_drop), f"后领深 {back_neck_drop:.1f}", offset=4.2),
         Dim("v", (quarter, 0), (quarter, armhole_depth), f"袖窿深 {armhole_depth:.1f}", offset=2.5),
     ]
     back.arcs = curve_callouts(back, {1: ("后领口弧长", "left"),
@@ -532,7 +532,7 @@ def draft_tshirt(m: Dict[str, float], fit: str = "regular") -> List[Piece]:
     )
     sleeve.dims = [
         Dim("h", (0, cap_height), (sw * 2, cap_height), f"袖肥 {sw*2:.1f}", offset=3.0),
-        Dim("v", (sw, 0), (sw, cap_height), f"袖山高 {cap_height:.1f}", offset=2.5),
+        Dim("v", (sw, 0), (sw, cap_height), f"袖山高 {cap_height:.1f}", offset=5.5),
         # 袖长 is measured from the cap top straight down to the hem, so the
         # span must start at y=0 — not at the underarm point, which is
         # cap_height lower and yields a different (shorter) number.
@@ -709,7 +709,7 @@ def draft_pants(m: Dict[str, float], fit: str = "regular") -> List[Piece]:
         Dim("h", (0, 0), (pk_w, 0), f"袋口宽 {pk_w:.1f}", offset=-2.2),
         Dim("v", (pk_w, 0), (pk_w, pk_h - 4), f"袋深 {pk_h-4:.1f}", offset=2.5),
     ]
-    pk.arcs = curve_callouts(pk, {4: ("袋底弧长", "right")})
+    pk.arcs = curve_callouts(pk, {3: ("袋底弧长", "right")})
     pieces.append(pk)
 
     return pieces
@@ -772,7 +772,7 @@ def draft_dress(m: Dict[str, float], fit: str = "regular",
         Dim("h", (0, armhole_depth), (bust_q, armhole_depth), f"1/4胸围 {bust_q:.1f}", offset=2.5),
         Dim("h", (0, bodice_len), (waist_q, bodice_len), f"1/4腰围 {waist_q:.1f}", offset=3.5),
         Dim("v", (0, 0), (0, bodice_len), f"腰节长 {bodice_len:.1f}", offset=-3.5),
-        Dim("v", (0, 0), (0, v_neck_drop), f"V领深 {v_neck_drop:.1f}", offset=2.0),
+        Dim("v", (0, 0), (0, v_neck_drop), f"V领深 {v_neck_drop:.1f}", offset=4.2),
         Dim("h", (0, 0), (neck_w, 0), f"领宽 {neck_w:.1f}", offset=-2.2),
         Dim("v", (bust_q, 0), (bust_q, armhole_depth), f"袖窿深 {armhole_depth:.1f}", offset=2.5),
     ]
@@ -799,7 +799,7 @@ def draft_dress(m: Dict[str, float], fit: str = "regular",
         Dim("h", (0, armhole_depth), (bust_q, armhole_depth), f"1/4胸围 {bust_q:.1f}", offset=2.5),
         Dim("h", (0, bodice_len), (waist_q, bodice_len), f"1/4腰围 {waist_q:.1f}", offset=3.5),
         Dim("v", (0, 0), (0, bodice_len), f"腰节长 {bodice_len:.1f}", offset=-3.5),
-        Dim("v", (0, 0), (0, back_neck_drop), f"后领深 {back_neck_drop:.1f}", offset=2.0),
+        Dim("v", (0, 0), (0, back_neck_drop), f"后领深 {back_neck_drop:.1f}", offset=4.2),
     ]
     bb.arcs = curve_callouts(bb, {1: ("后领口弧长", "left"),
                                   3: ("袖窿弧长", "right")})
@@ -872,7 +872,7 @@ def draft_dress(m: Dict[str, float], fit: str = "regular",
     )
     sl.dims = [
         Dim("h", (0, cap_height), (sw * 2, cap_height), f"袖肥 {sw*2:.1f}", offset=3.0),
-        Dim("v", (sw, 0), (sw, cap_height), f"袖山高 {cap_height:.1f}", offset=2.5),
+        Dim("v", (sw, 0), (sw, cap_height), f"袖山高 {cap_height:.1f}", offset=5.5),
         Dim("v", (sw, 0), (sw, sleeve_len), f"袖长 {sleeve_len:.0f}", offset=-3.5),
         Dim("h", (sw - cuff_w, sleeve_len), (sw * 2 - (sw - cuff_w), sleeve_len),
             f"袖口 {cuff_w*2:.1f}", offset=3.0),
@@ -1026,7 +1026,7 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
     )
     sleeve.dims = [
         Dim("h", (0, cap), (sleeve_w * 2, cap), f"袖肥 {sleeve_w*2:.1f}", offset=3.0),
-        Dim("v", (sleeve_w, 0), (sleeve_w, cap), f"袖山高 {cap:.1f}", offset=2.5),
+        Dim("v", (sleeve_w, 0), (sleeve_w, cap), f"袖山高 {cap:.1f}", offset=5.5),
         Dim("v", (sleeve_w, 0), (sleeve_w, sl_len), f"袖长 {sl_len:.1f}", offset=-3.5),
         Dim("h", (sleeve_w - cuff, sl_len), (sleeve_w * 2 - (sleeve_w - cuff), sl_len),
             f"袖口 {cuff*2:.1f}", offset=3.0),

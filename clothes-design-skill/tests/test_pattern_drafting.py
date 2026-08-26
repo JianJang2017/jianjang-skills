@@ -229,7 +229,11 @@ for gt in ("t-shirt", "pants", "dress", "crossover-blouse"):
     t = dest.read_text()
     check(f"{gt}: English title present", "Pattern Cutting Diagram" in t)
     check(f"{gt}: bilingual net/cut caption", "净样 Net" in t and "毛样 Cut" in t)
-    check(f"{gt}: bilingual seam allowance line", "缝份 Seam allowance" in t)
+    # The seam list wraps to as many lines as the cell allows, so the label is
+    # abbreviated to "缝份 SA:" and each entry carries its own English term.
+    check(f"{gt}: bilingual seam allowance line", "缝份 SA:" in t)
+    check(f"{gt}: seam terms glossed in English",
+          sum(k in t for k in ("shoulder", "side", "armhole", "hem", "waist")) >= 3)
     check(f"{gt}: bilingual grain label", "经向 Warp" in t or "纬向 Weft" in t)
     check(f"{gt}: bilingual legend", "净样线 Net / sewing line" in t)
     check(f"{gt}: English caveat present", "grade a full-size (1:1) pattern" in t)
@@ -265,6 +269,65 @@ r2 = subprocess.run(
 for key, zh, en in [("bust", "胸围", "Bust"), ("shoulder", "肩宽", "Shoulder"),
                     ("sleeve", "袖长", "Sleeve length"), ("length", "衣长", "Body length")]:
     check(f"spec(tops): {key} glossed as {zh}/{en}", f"`{key}` — {zh} / {en}" in r2.stdout)
+
+print()
+print("=== curves are dimensioned, not just endpoints ===")
+# A curve given only endpoints is not reproducible: the scoop depth is what a
+# pattern maker sets with a curve ruler. Every Q segment on a main panel must
+# carry an arc callout.
+from pattern_drafting import (                                    # noqa: E402
+    path_arc_lengths, arc_length_by_label, quad_arc_length,
+)
+
+for gt in ("t-shirt", "pants", "dress", "crossover-blouse"):
+    cat, fn = DRAFTERS[gt]
+    for p in fn(SIZE_CHART[cat]["M"]):
+        n_curves = len(path_arc_lengths(p))
+        if n_curves == 0:
+            continue
+        check(f"{gt}/{p.name}: curves have arc callouts", len(p.arcs) >= 1)
+        for a in p.arcs:
+            check(f"{gt}/{p.name}: arc '{a.label}' has exact length",
+                  a.length > 0 and abs(a.length - float(a.label.split()[-1])) < 0.06)
+            check(f"{gt}/{p.name}: arc '{a.label}' glossed in English",
+                  bool(dim_english(a.label)))
+
+print()
+print("=== sleeve cap matches the armhole it sews into ===")
+# The defect this guards: sizing a sleeve from a formula while drawing a
+# different curve produced a 47cm cap for a 28cm armhole — unsewable.
+CAP_RULES = {
+    # garment: (bodice piece indices, sleeve index, expected relation)
+    "t-shirt": ((0, 1), 2, ("ease", 1.5)),
+    "dress": ((0, 1), 4, ("ratio", 1.18)),
+    "crossover-blouse": ((0, 2), 3, ("ease", 2.0)),
+}
+for gt, (bodices, sl_idx, (kind, target)) in CAP_RULES.items():
+    cat, fn = DRAFTERS[gt]
+    for size in SIZE_ORDER:
+        ps = fn(SIZE_CHART[cat][size])
+        armhole = sum(arc_length_by_label(ps[i], "袖窿弧长") for i in bodices)
+        cap = sum(path_arc_lengths(ps[sl_idx]))
+        check(f"{gt}/{size}: armhole is dimensioned", armhole > 1.0)
+        if kind == "ease":
+            check(f"{gt}/{size}: cap ease = +{target}cm",
+                  abs((cap - armhole) - target) < 0.06)
+        else:
+            check(f"{gt}/{size}: cap gather ratio = {target}",
+                  abs(cap / armhole - target) < 0.012)
+
+print()
+print("=== rendered SVG shows arc lengths ===")
+for gt in ("t-shirt", "dress"):
+    dest = out_dir / f"arc-{gt}.svg"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "draw_pattern.py"),
+                    "--type", gt, "--size", "M", "-o", str(dest)],
+                   capture_output=True, text=True, cwd=ROOT)
+    t = dest.read_text()
+    check(f"{gt}: SVG has 袖窿弧长 callout", "袖窿弧长" in t)
+    check(f"{gt}: SVG has scoop depth", "凹势" in t)
+    check(f"{gt}: SVG glosses arc terms", "Armhole arc" in t and "Scoop depth" in t)
+    check(f"{gt}: legend documents arc colour", "弧长/凹势" in t)
 
 print()
 if fails:

@@ -189,14 +189,19 @@ def draw_dim(c: Canvas, d: Dim, ox: float, oy: float, s: float):
               f'stroke="{C_DIM}" stroke-width="0.9" marker-start="url(#al)" '
               f'marker-end="url(#ar)"/>')
         my = (y1 + y2) / 2
-        h_box = 21 if en else 12
-        en_line = (f'<text x="0" y="5" font-family="{FONT}" font-size="7.6" '
+        # In the rotated group the two lines stack along screen-x, so they need
+        # a full line's separation. y=-11 / y=-1 keeps the 9.5px Chinese line
+        # clear of the 7.6px English one; y=+5 (the earlier value) overlapped it.
+        h_box = 24 if en else 13
+        en_line = (f'<text x="0" y="-1.5" font-family="{FONT}" font-size="7.4" '
                    f'fill="{C_MUTED}" text-anchor="middle" font-style="italic">'
                    f'{esc(en)}</text>') if en else ""
         c.add(f'<g transform="translate({lx:.2f},{my:.2f}) rotate(-90)">'
-              f'<rect x="{-w_box/2:.2f}" y="-13" width="{w_box:.2f}" '
-              f'height="{h_box}" fill="{C_BG}" opacity="0.9" rx="2"/>'
-              f'<text x="0" y="-4" font-family="{FONT}" font-size="9.5" fill="{C_DIM}" '
+              f'<rect x="{-w_box/2:.2f}" y="{-13 if en else -11.5:.1f}" '
+              f'width="{w_box:.2f}" '
+              f'height="{h_box}" fill="{C_BG}" opacity="0.92" rx="2"/>'
+              f'<text x="0" y="{-12 if en else -3.5:.1f}" font-family="{FONT}" '
+              f'font-size="9.5" fill="{C_DIM}" '
               f'text-anchor="middle" font-weight="600">{esc(d.label)}</text>'
               f'{en_line}</g>')
 
@@ -261,13 +266,44 @@ def draw_grain(c: Canvas, p: Piece, ox: float, oy: float, s: float):
     cx = ox + (x0 + x1) / 2 * s
     cy = oy + (y0 + y1) / 2 * s
     if p.grain == "vertical":
-        half = min((y1 - y0) * s * 0.3, 46)
-        c.add(f'<line x1="{cx:.2f}" y1="{cy-half:.2f}" x2="{cx:.2f}" y2="{cy+half:.2f}" '
+        # Vertical dimension labels are centred on the midpoint of their span,
+        # so the grain caption has to avoid those midpoints rather than sit at a
+        # fixed fraction of the height. Pick the vertical position furthest from
+        # every existing label midpoint — this generalises to new pieces instead
+        # of needing a hand-tuned offset per drafter.
+        # Same collision test as the fold caption, with the fold caption itself
+        # added to the blocked set. Placing by a "looks empty" fraction is what
+        # kept moving this label off one dimension and onto another.
+        blocked = dim_label_rects(p, ox, oy, s)
+        if p.fold_edge == "left":
+            fx, fy = fold_caption_pos(p, ox, oy, s)
+            fw, fh = FOLD_CAPTION
+            blocked.append((fx - fh, fy - fw / 2, fh, fw))
+        cands = [(ox + (x0 + (x1 - x0) * cf) * s, oy + (y0 + (y1 - y0) * rf) * s)
+                 for rf in (0.5, 0.42, 0.58, 0.34, 0.66)
+                 for cf in (0.5, 0.36, 0.64, 0.26, 0.74)]
+        gw, gh = GRAIN_CAPTION
+        free = [a for a in cands
+                if not any(hit((a[0] - gh, a[1] - gw / 2, gh, gw), b)
+                           for b in blocked)]
+        # A small, heavily dimensioned piece (a short sleeve is ~54x64px with
+        # five dimensions) has no room for the caption at any position. The
+        # arrow alone is the standard grain marking and the legend names it, so
+        # drop the text rather than print it on top of a measurement.
+        show_caption = bool(free)
+        gx, gy = (free[0] if free
+                  else (ox + (x0 + x1) / 2 * s, oy + (y0 + y1) / 2 * s))
+        gx += 9        # anchor is the caption; the arrow sits just right of it
+        half = min((y1 - y0) * s * 0.11, 26)
+        c.add(f'<line x1="{gx:.2f}" y1="{gy-half:.2f}" x2="{gx:.2f}" y2="{gy+half:.2f}" '
               f'stroke="{C_GRAIN}" stroke-width="1.1" marker-start="url(#gl)" '
               f'marker-end="url(#gr)"/>')
-        c.add(f'<g transform="translate({cx+10:.2f},{cy:.2f}) rotate(-90)">'
-              f'<text x="0" y="0" font-family="{FONT}" font-size="8.5" fill="{C_GRAIN}" '
-              f'text-anchor="middle">经向 Warp</text></g>')
+        if show_caption:
+            c.add(f'<g transform="translate({gx-9:.2f},{gy:.2f}) rotate(-90)">'
+                  f'<rect x="-26" y="-10" width="52" height="11" fill="{C_BG}" '
+                  f'opacity="0.9" rx="2"/>'
+                  f'<text x="0" y="-1.5" font-family="{FONT}" font-size="8.5" '
+                  f'fill="{C_GRAIN}" text-anchor="middle">经向 Warp</text></g>')
     else:
         half = min((x1 - x0) * s * 0.3, 46)
         c.add(f'<line x1="{cx-half:.2f}" y1="{cy:.2f}" x2="{cx+half:.2f}" y2="{cy:.2f}" '
@@ -283,11 +319,88 @@ def draw_fold(c: Canvas, p: Piece, ox: float, oy: float, s: float):
     x0, y0, _, y1 = p.bbox()
     x = ox + x0 * s
     c.line(x, oy + y0 * s, x, oy + y1 * s, C_FOLD, 1.8, dash="12,3,3,3")
-    my = oy + (y0 + y1) / 2 * s
-    c.add(f'<g transform="translate({x-9:.2f},{my:.2f}) rotate(-90)">'
-          f'<rect x="-40" y="-11" width="80" height="12" fill="{C_BG}" opacity="0.9" rx="2"/>'
-          f'<text x="0" y="-2" font-family="{FONT}" font-size="8.5" fill="{C_FOLD}" '
+    # Place the caption inside the panel at the first spot that clears every
+    # dimension label. Outside-left, where this used to sit, is exactly where the
+    # 衣长/腰节长 label runs.
+    fx, fy = fold_caption_pos(p, ox, oy, s)
+    c.add(f'<g transform="translate({fx:.2f},{fy:.2f}) rotate(-90)">'
+          f'<rect x="-42" y="-10" width="84" height="12" fill="{C_BG}" '
+          f'opacity="0.92" rx="2"/>'
+          f'<text x="0" y="-1" font-family="{FONT}" font-size="8.5" fill="{C_FOLD}" '
           f'text-anchor="middle" font-weight="600">对折线 Cut on fold</text></g>')
+
+
+Rect = Tuple[float, float, float, float]      # x, y, w, h in screen coords
+
+
+def hit(a: Rect, b: Rect, pad: float = 2.0) -> bool:
+    return not (a[0] + a[2] + pad <= b[0] or b[0] + b[2] + pad <= a[0]
+                or a[1] + a[3] + pad <= b[1] or b[1] + b[3] + pad <= a[1])
+
+
+def dim_label_rects(p: Piece, ox: float, oy: float, s: float) -> List[Rect]:
+    """
+    Screen-space boxes of every dimension label this piece will draw.
+
+    Captions are positioned by testing against these rather than against a
+    hand-picked offset. Guessing a "free" fraction of the panel is what produced
+    the whack-a-mole: each nudge moved a caption off one label and onto another,
+    because the labels sit at dimension midpoints, not at fixed fractions.
+    """
+    rects: List[Rect] = []
+    for d in spread_vertical_dims(p.dims):
+        x1, y1 = ox + d.p1[0] * s, oy + d.p1[1] * s
+        x2, y2 = ox + d.p2[0] * s, oy + d.p2[1] * s
+        off = d.offset * s
+        en = d.en or dim_english(d.label)
+        w = max(text_width(d.label, 9.5), text_width(en, 7.4)) + 6
+        if d.kind == "h":
+            ly = max(y1, y2) + off if off >= 0 else min(y1, y2) + off
+            ty = ly - 5.0 if off >= 0 else ly + 12
+            rects.append(((x1 + x2) / 2 - w / 2, ty - 9.5, w, 24 if en else 13))
+        else:
+            lx = max(x1, x2) + off if off >= 0 else min(x1, x2) + off
+            my = (y1 + y2) / 2
+            # rotate(-90): local x spans screen y, local y spans screen x
+            rects.append((lx - 13, my - w / 2, 24 if en else 13, w))
+    return rects
+
+
+def place_rotated_caption(blocked: List[Rect], cands: List[Tuple[float, float]],
+                          w: float, h: float) -> Tuple[float, float]:
+    """
+    First candidate anchor whose rotated caption box clears everything drawn.
+
+    `w`/`h` are the caption's screen extents (a rotated caption is tall and
+    narrow). Falls back to the candidate with the fewest collisions so a crowded
+    piece still renders rather than throwing.
+    """
+    def box(a):
+        return (a[0] - h, a[1] - w / 2, h, w)
+
+    best, best_n = cands[0], 1 << 30
+    for a in cands:
+        n = sum(1 for b in blocked if hit(box(a), b))
+        if n == 0:
+            return a
+        if n < best_n:
+            best, best_n = a, n
+    return best
+
+
+FOLD_CAPTION = (84.0, 12.0)      # screen w x h of the rotated fold caption
+GRAIN_CAPTION = (52.0, 11.0)
+
+
+def fold_caption_pos(p: Piece, ox: float, oy: float,
+                     s: float) -> Tuple[float, float]:
+    """Anchor for the fold caption: inside the fold edge, clear of all labels."""
+    x0, y0, x1, y1 = p.bbox()
+    blocked = dim_label_rects(p, ox, oy, s)
+    cands = [(ox + x0 * s + dx, oy + (y0 + (y1 - y0) * f) * s)
+             for f in (0.80, 0.88, 0.70, 0.62, 0.50)
+             for dx in (30, 44, 22)]
+    return place_rotated_caption(blocked, cands, *FOLD_CAPTION)
 
 
 def draw_cut_line(c: Canvas, p: Piece, ox: float, oy: float, s: float):
@@ -311,6 +424,38 @@ def draw_cut_line(c: Canvas, p: Piece, ox: float, oy: float, s: float):
           f'translate({-cx:.2f},{-cy:.2f})">'
           f'<path d="{d}" fill="none" stroke="{C_CUT}" stroke-width="1.0" '
           f'stroke-dasharray="7,4" opacity="0.85"/></g>')
+
+
+def spread_vertical_dims(dims: List[Dim]) -> List[Dim]:
+    """
+    Push apart vertical dimensions that share an edge and a side.
+
+    Two vertical dims measured on the same x with offsets of similar magnitude
+    render their rotated label plates on top of each other. Rather than hand-tune
+    an offset per drafter (which breaks the moment a new piece is added), fan out
+    any group that would collide: same measurement line, same side, label
+    midpoints within a label-height of each other.
+    """
+    out = list(dims)
+    verticals = [(i, d) for i, d in enumerate(out) if d.kind == "v"]
+    groups: Dict[Tuple[float, bool], List[int]] = {}
+    for i, d in verticals:
+        key = (round(max(d.p1[0], d.p2[0]), 2), d.offset >= 0)
+        groups.setdefault(key, []).append(i)
+
+    for (_, positive), idxs in groups.items():
+        if len(idxs) < 2:
+            continue
+        # order by span midpoint so the fan-out follows the drawing
+        idxs.sort(key=lambda i: (out[i].p1[1] + out[i].p2[1]) / 2)
+        step = 4.6
+        base = min(abs(out[i].offset) for i in idxs)
+        for rank, i in enumerate(idxs):
+            mag = base + rank * step
+            d = out[i]
+            out[i] = Dim(d.kind, d.p1, d.p2, d.label,
+                         mag if positive else -mag, d.value, d.en)
+    return out
 
 
 CAPTION_TOP = 34          # gap between the piece's bottom edge and its caption
@@ -446,7 +591,7 @@ def render(garment: str, category: str, size: str, pieces: List[Piece],
         draw_fold(c, p, ox, oy, scale)
         draw_grain(c, p, ox, oy, scale)
         draw_arcs(c, p, ox, oy, scale)
-        for d in p.dims:
+        for d in spread_vertical_dims(p.dims):
             draw_dim(c, d, ox, oy, scale)
 
         draw_caption(c, p, ox, oy, scale, cell_w=cell_widths[id(p)])
