@@ -392,6 +392,47 @@ def validate_pieces(pieces: List[Piece]) -> List[str]:
     return problems
 
 
+# Narrowest width any garment panel can realistically be cut from. Below this
+# the input is an error — a typo, or metres typed where cm were expected.
+MIN_PLAUSIBLE_FABRIC_WIDTH = 60
+
+
+def validate_fabric_width(fabric_width: float, pieces: List[Piece]) -> List[str]:
+    """
+    Check that the stated fabric width could actually hold these pieces.
+
+    The width is printed in the title block as though it were verified, and
+    downstream yardage divides by it. A non-positive value produces negative
+    yardage and cost; a merely too-narrow one produces a diagram whose panels
+    do not fit the fabric the pattern maker was told to buy.
+    """
+    if fabric_width <= 0:
+        return [f"幅宽必须为正数，收到 {fabric_width}cm"]
+    if fabric_width < MIN_PLAUSIBLE_FABRIC_WIDTH:
+        return [
+            f"幅宽 {fabric_width}cm 小于最窄可用门幅 "
+            f"{MIN_PLAUSIBLE_FABRIC_WIDTH}cm，无法排料；请确认输入"
+        ]
+
+    # Only on-fold pieces get a geometric fit check. Their fold edge lies on the
+    # fabric fold, which runs along the warp, so the drafted x extent doubles
+    # across the width — that is unambiguous. For pieces cut open, the drafted
+    # axes do not map consistently onto grain (long strips such as a sash are
+    # drafted along x whether their grain is warp or weft), so the width
+    # constraint cannot be derived from the bounding box alone.
+    problems = []
+    for p in pieces:
+        if not p.fold_edge:
+            continue
+        cut_w, _ = p.cut_size()
+        needed = cut_w * 2
+        if needed > fabric_width:
+            problems.append(
+                f"{p.name}: 对折展开需 {needed:.1f}cm 宽，超过幅宽 {fabric_width}cm"
+            )
+    return problems
+
+
 # ─── Ease (放松量, cm) ───────────────────────────────────────────────────────
 # SIZE_CHART holds *body* measurements. A garment needs ease on top, and how
 # much depends on fit intent. Without this the pattern would be skin-tight.

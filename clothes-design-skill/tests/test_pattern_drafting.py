@@ -330,6 +330,46 @@ for gt in ("t-shirt", "dress"):
     check(f"{gt}: legend documents arc colour", "弧长/凹势" in t)
 
 print()
+print("=== fabric width gate ===")
+# The title block prints the fabric width as though it were verified, so an
+# unusable value must stop the drawing rather than be rendered next to it.
+def draw(gt, size, fit, width, dest):
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "draw_pattern.py"),
+         "--type", gt, "--size", size, "--fit", fit,
+         "--fabric-width", str(width), "--title", "x", "-o", str(dest)],
+        capture_output=True, text=True, cwd=ROOT)
+
+
+for width in (0, -50, 5):
+    dest = out_dir / f"width-{width}.svg"
+    if dest.exists():
+        dest.unlink()
+    r = draw("t-shirt", "M", "regular", width, dest)
+    check(f"width={width} is rejected", r.returncode != 0, f"exit {r.returncode}")
+    check(f"width={width} names 幅宽", "幅宽" in r.stderr, r.stderr[-120:])
+    check(f"width={width} writes no SVG", not dest.exists())
+
+# A piece cut on the fold opens out to twice its drafted width; if that exceeds
+# the fabric it cannot be cut, and saying otherwise sends someone to buy it.
+r = draw("dress", "XXXL", "loose", 60, out_dir / "width-narrow.svg")
+check("on-fold piece wider than fabric is rejected", r.returncode != 0,
+      f"exit {r.returncode}")
+check("rejection names the offending piece", "对折展开需" in r.stderr,
+      r.stderr[-160:])
+
+# The gate must not fire on real widths — that would block every valid run.
+unexpected = []
+for gt in sorted(DRAFTERS):
+    for size in ("XS", "M", "XXXL"):
+        for width in (110, 140, 150):
+            r = draw(gt, size, "loose", width, out_dir / "width-ok.svg")
+            if r.returncode != 0:
+                unexpected.append(f"{gt}/{size}/w={width}")
+check("no false positives at standard widths", not unexpected,
+      f"{len(unexpected)} rejected: {unexpected[:4]}")
+
+print()
 if fails:
     print(f"❌ {len(fails)} FAILED:")
     for f in fails:

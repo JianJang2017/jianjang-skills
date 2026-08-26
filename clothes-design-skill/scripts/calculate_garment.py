@@ -107,6 +107,11 @@ FABRIC_WIDTHS = {
     "wide": 150,     # 宽幅：外套、裙装
 }
 
+# Narrowest width a garment panel can realistically be cut from. Anything
+# below this is an input error (typo, or metres entered instead of cm), not a
+# fabric to be quoted on.
+MIN_PLAUSIBLE_FABRIC_WIDTH = 60
+
 def calculate_fabric_consumption(garment_type: str, size: str, category: str, fabric_width: int = 140) -> Dict[str, Any]:
     """Calculate fabric yardage needed for one garment"""
 
@@ -260,6 +265,19 @@ def generate_garment_spec(
     if category not in SIZE_CHART:
         raise ValueError(
             f"未知品类 '{category}'，可选：{', '.join(SIZE_CHART)}"
+        )
+
+    # Fabric width is a divisor. A non-positive value either crashes on the
+    # division or silently flips yardage and every cost line negative, which
+    # reads as an authoritative quote for fabric that cannot exist.
+    if fabric_width <= 0:
+        raise ValueError(
+            f"幅宽必须为正数，收到 {fabric_width}cm"
+        )
+    if fabric_width < MIN_PLAUSIBLE_FABRIC_WIDTH:
+        raise ValueError(
+            f"幅宽 {fabric_width}cm 小于最窄可用门幅 "
+            f"{MIN_PLAUSIBLE_FABRIC_WIDTH}cm，无法排料；请确认输入"
         )
 
     available = SIZE_CHART[category]

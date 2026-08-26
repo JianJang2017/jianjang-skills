@@ -24,7 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from calculate_garment import SIZE_CHART, SIZE_ORDER          # noqa: E402
 from pattern_drafting import (                                 # noqa: E402
-    DRAFTERS, Piece, Dim, validate_pieces, SEAM_ALLOWANCE, EASE,
+    DRAFTERS, Piece, Dim, validate_pieces, validate_fabric_width,
+    SEAM_ALLOWANCE, EASE,
     dim_english, seam_label, quad_max_depth,
 )
 
@@ -649,6 +650,16 @@ def main():
     category, drafter = DRAFTERS[args.type]
     measurements = SIZE_CHART[category][args.size]
     pieces = drafter(measurements, fit=args.fit)
+
+    # The title block prints the fabric width as if it were verified. A value
+    # that cannot hold the pieces would send a pattern maker to buy fabric the
+    # panels do not fit on, so reject it instead of printing it.
+    width_problems = validate_fabric_width(args.fabric_width, pieces)
+    if width_problems:
+        print("❌ 幅宽无效，拒绝出图：", file=sys.stderr)
+        for p in width_problems:
+            print(f"   - {p}", file=sys.stderr)
+        return 1
 
     # Never emit a drawing whose labels disagree with its geometry — that is
     # precisely the defect that makes a cutting diagram unusable.

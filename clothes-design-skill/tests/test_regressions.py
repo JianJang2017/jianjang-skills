@@ -108,6 +108,32 @@ r = run("--type", "shirt", "--category", "hats", "--fabric", "cotton", "--json")
 check("argparse rejects bad category", r.returncode != 0)
 
 print()
+print("=== DEFECT 4: invalid fabric width must stop, not divide ===")
+# Width is a divisor: 0 raised ZeroDivisionError, and negatives silently
+# produced negative yardage and a negative total cost that still read as a quote.
+for w in ("0", "-50"):
+    r = run("--type", "t-shirt", "--category", "tops", "--fabric", "cotton",
+            "--fabric-width", w, "--sizes", "M", "--json")
+    check(f"width={w} exits non-zero", r.returncode != 0, f"exit {r.returncode}")
+    check(f"width={w} names the fault", "幅宽" in r.stderr, r.stderr[-120:])
+    check(f"width={w} emits no JSON", r.stdout.strip() == "", r.stdout[:80])
+    check(f"width={w} does not traceback", "Traceback" not in r.stderr, r.stderr[-120:])
+
+r = run("--type", "t-shirt", "--category", "tops", "--fabric", "cotton",
+        "--fabric-width", "5", "--sizes", "M", "--json")
+check("implausibly narrow width is rejected", r.returncode != 0, f"exit {r.returncode}")
+
+r = run("--type", "t-shirt", "--category", "tops", "--fabric", "cotton",
+        "--fabric-width", "140", "--sizes", "M", "--json")
+d = json.loads(r.stdout)
+check("standard width still works", r.returncode == 0)
+check("standard width yields positive yardage",
+      d["fabric_consumption"]["fabric_length_m"] > 0,
+      str(d["fabric_consumption"]["fabric_length_m"]))
+check("standard width yields positive cost",
+      d["cost_breakdown"]["total_cost"] > 0, str(d["cost_breakdown"]["total_cost"]))
+
+print()
 if fails:
     print(f"❌ {len(fails)} FAILED: {fails}")
     sys.exit(1)
