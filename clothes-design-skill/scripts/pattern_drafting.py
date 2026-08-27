@@ -319,6 +319,14 @@ def quad_max_depth(p0, p1, p2) -> Tuple[float, Tuple[float, float]]:
 
 
 @dataclass
+class Notch:
+    """A matching mark located by path-command index and fractional distance."""
+    seg_index: int
+    fraction: float
+    label: str
+
+
+@dataclass
 class Piece:
     """A pattern piece: outline, dimensions, and cutting metadata."""
     name: str                    # 中文名
@@ -330,6 +338,11 @@ class Piece:
     grain: str = "vertical"      # 布纹方向: vertical 经向 | horizontal 纬向
     fold_edge: Optional[str] = None   # 'left' 对折边在左 | None
     seams: Dict[str, float] = field(default_factory=dict)  # edge → allowance
+    # One allowance for every boundary command after M, including the closing Z.
+    # Full-size outputs require this explicit mapping; the summary `seams`
+    # dictionary is only human-readable metadata and cannot identify an edge.
+    path_allowances: List[float] = field(default_factory=list)
+    notches: List[Notch] = field(default_factory=list)
     note: str = ""
 
     def bbox(self) -> Tuple[float, float, float, float]:
@@ -966,22 +979,23 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
     big = Piece(
         name="前襟左片(大襟)", name_en="Front L (overlap)", qty=1,
         grain="vertical", seams=dict(seams_body),
-        note=f"压在上层；含搭门 {overlap:.1f}cm，斜襟自领口斜向右腋下；不可与小襟互换",
+        path_allowances=[0.8, 1.0, 1.0, 1.0, 2.5, 0.8],
+        notches=[Notch(1, 1.0, "N1"), Notch(3, 0.5, "A")],
+        note=f"压在上层；前中向左延伸搭门 {overlap:.1f}cm，斜襟落至腰侧；不可与小襟互换",
         path=[
-            ("M", 0, neck_drop),                       # 领口起点（前中）
-            ("L", neck_w, 0),                          # 斜领口
+            ("M", -overlap, neck_drop + 6),            # 搭门内端（越过前中）
+            ("L", neck_w, 0),                          # 斜领口至肩颈点
             ("L", half_shoulder, shoulder_slope),      # 肩线
             ("Q", half_shoulder + 1.5, armhole_depth * 0.55, quarter, armhole_depth),
             ("L", quarter, length),                    # 侧缝
-            ("L", w_big, length),                      # 下摆（含搭门）
-            ("L", w_big, neck_drop + 6),               # 搭门内边
+            ("L", -overlap, length),                   # 下摆含完整身宽与搭门
             ("Z",),
         ],
     )
     big.arcs = curve_callouts(big, {3: ("袖窿弧长", "right")})
     big.dims = [
-        Dim("h", (0, length), (w_big, length), f"大襟宽 {w_big:.1f}", offset=3.5),
-        Dim("h", (quarter, length - 6), (w_big, length - 6), f"搭门 {overlap:.1f}", offset=-1.8,
+        Dim("h", (-overlap, length), (quarter, length), f"大襟宽 {w_big:.1f}", offset=3.5),
+        Dim("h", (-overlap, length - 6), (0, length - 6), f"搭门 {overlap:.1f}", offset=-1.8,
             value=overlap),
         Dim("v", (0, 0), (0, length), f"衣长 {length:.0f}", offset=-3.5),
         Dim("v", (0, 0), (0, neck_drop), f"领深 {neck_drop:.1f}", offset=2.0),
@@ -991,14 +1005,15 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
     pieces.append(big)
 
     # ── 小襟 front (under layer, narrower) ──
-    w_small = quarter - overlap * 0.4
     small = Piece(
         name="前襟右片(小襟)", name_en="Front R (under)", qty=1,
         grain="vertical", seams=dict(seams_body),
-        note=f"搭在下层，比大襟窄 {w_big - w_small:.1f}cm；内侧缝系带固定",
+        path_allowances=[0.8, 1.0, 1.0, 1.0, 2.5, 0.8],
+        notches=[Notch(1, 1.0, "N2"), Notch(3, 0.5, "A")],
+        note=f"搭在下层；下摆保留完整 1/4 身宽，比大襟少搭门 {overlap:.1f}cm；内侧缝系带固定",
         path=[
             ("M", 0, neck_drop * 0.62),
-            ("L", neck_w * 0.8, 0),
+            ("L", neck_w, 0),                         # 与后片共用肩颈点，肩缝等长
             ("L", half_shoulder, shoulder_slope),
             ("Q", half_shoulder + 1.5, armhole_depth * 0.55, quarter, armhole_depth),
             ("L", quarter, length),
@@ -1018,6 +1033,9 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
     back = Piece(
         name="后片", name_en="Back", qty=1,
         fold_edge="left", grain="vertical", seams=dict(seams_body),
+        path_allowances=[0.8, 1.0, 1.0, 1.0, 2.5, 0.0],
+        notches=[Notch(1, 0.0, "CB"), Notch(1, 1.0, "N1/N2"),
+                 Notch(3, 0.5, "B")],
         note=f"连折裁，折边为后中线；侧缝下摆开叉 {side_slit:.1f}cm",
         path=[
             ("M", 0, 2.0),
@@ -1054,6 +1072,8 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
         grain="vertical",
         seams={"armhole": SEAM_ALLOWANCE["armhole"], "side": SEAM_ALLOWANCE["side"],
                "hem": SEAM_ALLOWANCE["sleeve_hem"]},
+        path_allowances=[1.0, 1.0, 1.0, 2.0, 1.0],
+        notches=[Notch(1, 0.5, "A"), Notch(2, 0.5, "B")],
         note=f"左右各 1 片；宽袖直筒，袖山平缓（古风廓形）；"
              f"袖山弧长 = 袖窿 {armhole_total:.1f}cm + 吃势 {cap_ease_gf:.1f}cm",
         path=[
@@ -1077,14 +1097,26 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
     pieces.append(sleeve)
 
     # ── Collar band ──
-    neck_run = (neck_w * 2 * 1.08) + neck_drop * 1.15 + 2.0 * 1.1
-    collar_len = neck_run * 1.04 + overlap * 2
+    # Measure the exact neckline edges already drafted. Formula-derived collar
+    # lengths drift when the crossover geometry changes and then cannot sew on.
+    import math
+    big_neck = math.dist((big.path[0][1], big.path[0][2]),
+                         (big.path[1][1], big.path[1][2]))
+    small_neck = math.dist((small.path[0][1], small.path[0][2]),
+                           (small.path[1][1], small.path[1][2]))
+    back_neck = arc_length_by_label(back, "后领口弧长")
+    neck_run = big_neck + (2 * back_neck) + small_neck
+    collar_len = neck_run
     collar_h = 3.0
     collar = Piece(
         name="领子", name_en="Collar band", qty=1,
         grain="horizontal",
         seams={"neckline": SEAM_ALLOWANCE["neckline"], "side": SEAM_ALLOWANCE["side"],
                "hem": SEAM_ALLOWANCE["neckline"], "shoulder": SEAM_ALLOWANCE["neckline"]},
+        path_allowances=[0.8, 1.0, 0.8, 1.0],
+        notches=[Notch(1, big_neck / collar_len, "N1"),
+                 Notch(1, (big_neck + back_neck) / collar_len, "CB"),
+                 Notch(1, (big_neck + 2 * back_neck) / collar_len, "N2")],
         note=f"横纹裁，需粘衬；绕颈一周并延伸至搭门，成品领口弧长 {neck_run:.1f}cm",
         path=[("M", 0, 0), ("L", collar_len, 0), ("L", collar_len, collar_h * 2),
               ("L", 0, collar_h * 2), ("Z",)],
@@ -1101,6 +1133,7 @@ def draft_crossover_blouse(m: Dict[str, float], fit: str = "loose") -> List[Piec
         name="腰带", name_en="Sash", qty=1,
         grain="vertical",
         seams={"side": 1.0, "hem": 1.0, "waist": 1.0, "shoulder": 1.0},
+        path_allowances=[1.0, 1.0, 1.0, 1.0],
         note="可拼接裁；对折缝合后翻正，两端收尖",
         path=[("M", 0, 0), ("L", sash_len, 0), ("L", sash_len, sash_h * 2),
               ("L", 0, sash_h * 2), ("Z",)],

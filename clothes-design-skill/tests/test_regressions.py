@@ -134,6 +134,68 @@ check("standard width yields positive cost",
       d["cost_breakdown"]["total_cost"] > 0, str(d["cost_breakdown"]["total_cost"]))
 
 print()
+print("=== DEFECT 5: every drafted type needs real cost data ===")
+# The cutting engine drafts 7 types but the cost tables only covered 5, so
+# crossover-blouse and jeans were quoted on generic fallbacks. Worse, the
+# marker-efficiency fallback recorded nothing at all, so the yardage read as if
+# it had been looked up. Any type draw_pattern.py can draft must price from real
+# data — otherwise a complete-looking spec rests on guesses.
+sys.path.insert(0, str(ROOT / "scripts"))
+from pattern_drafting import DRAFTERS  # noqa: E402
+
+CATEGORY_OF = {gt: cat for gt, (cat, _) in DRAFTERS.items()}
+
+for gt, cat in sorted(CATEGORY_OF.items()):
+    r = run("--type", gt, "--category", cat, "--fabric", "cotton",
+            "--sizes", "M", "--json")
+    check(f"{gt}: spec generates", r.returncode == 0, r.stderr[-120:])
+    if r.returncode != 0:
+        continue
+    d = json.loads(r.stdout)
+    fab_asm = d["fabric_consumption"]["assumptions"]
+    cost_asm = d["cost_breakdown"]["assumptions"]
+    check(f"{gt}: no yardage fallback", fab_asm == [], str(fab_asm))
+    check(f"{gt}: no cost fallback", cost_asm == [], str(cost_asm))
+
+# crossover-blouse has 7 pieces incl. an asymmetric overlap and a 190cm sash;
+# quoting it as a plain blouse understated both labour and fabric.
+r = run("--type", "crossover-blouse", "--category", "tops", "--fabric", "linen",
+        "--sizes", "M", "--json")
+xb = json.loads(r.stdout)
+r = run("--type", "blouse", "--category", "tops", "--fabric", "linen",
+        "--sizes", "M", "--json")
+pb = json.loads(r.stdout)
+check("crossover-blouse costs more labour than plain blouse",
+      xb["cost_breakdown"]["labor_hours"] > pb["cost_breakdown"]["labor_hours"],
+      f'{xb["cost_breakdown"]["labor_hours"]} vs {pb["cost_breakdown"]["labor_hours"]}')
+check("crossover-blouse markers less efficiently than plain blouse",
+      xb["fabric_consumption"]["efficiency_rate"] < pb["fabric_consumption"]["efficiency_rate"],
+      f'{xb["fabric_consumption"]["efficiency_rate"]} vs {pb["fabric_consumption"]["efficiency_rate"]}')
+
+# jeans need rivets, heavier thread and topstitching that plain pants do not.
+r = run("--type", "jeans", "--category", "bottoms", "--fabric", "denim",
+        "--sizes", "M", "--json")
+jn = json.loads(r.stdout)
+r = run("--type", "pants", "--category", "bottoms", "--fabric", "denim",
+        "--sizes", "M", "--json")
+pt = json.loads(r.stdout)
+check("jeans notions exceed plain pants",
+      jn["cost_breakdown"]["notions_cost"] > pt["cost_breakdown"]["notions_cost"],
+      f'{jn["cost_breakdown"]["notions_cost"]} vs {pt["cost_breakdown"]["notions_cost"]}')
+
+# The efficiency fallback must still fire — and be disclosed — for a type the
+# engine genuinely does not know.
+r = run("--type", "hanfu", "--category", "tops", "--fabric", "bamboo", "--json")
+d = json.loads(r.stdout)
+check("unknown type discloses yardage fallback",
+      any("排料效率" in n for n in d["fabric_consumption"]["assumptions"]),
+      str(d["fabric_consumption"]["assumptions"]))
+
+r = run("--type", "hanfu", "--category", "tops", "--fabric", "bamboo")
+check("markdown merges yardage and cost assumptions",
+      "排料效率" in r.stdout and "bamboo" in r.stdout)
+
+print()
 if fails:
     print(f"❌ {len(fails)} FAILED: {fails}")
     sys.exit(1)
