@@ -55,7 +55,7 @@ SIZE_CHART = {
 SIZE_ORDER = ("XS", "S", "M", "L", "XL", "XXL", "XXXL")
 
 # Measurement-point labels. A spec sheet gets read by a domestic pattern maker
-# and by an overseas factory off the same PDF, so each column carries both the
+# and by an overseas factory from the same specification, so each column carries both the
 # Chinese term and the English one. Bare keys like "inseam" or "hem" are the
 # ambiguous ones — "hem" can mean hem width or hem allowance, and 下摆围 vs
 # 脚口 differ by garment, so the pairing removes the guesswork.
@@ -93,9 +93,11 @@ PATTERN_EFFICIENCY = {
     "t-shirt": 0.75,
     "shirt": 0.72,
     "blouse": 0.70,
+    "crossover-blouse": 0.66,   # 大襟/小襟不对称，且需裁长腰带，排料更零碎
     "dress": 0.68,
     "skirt": 0.80,
     "pants": 0.65,
+    "jeans": 0.65,
     "jacket": 0.60,
     "coat": 0.58,
 }
@@ -116,7 +118,18 @@ def calculate_fabric_consumption(garment_type: str, size: str, category: str, fa
     """Calculate fabric yardage needed for one garment"""
 
     measurements = SIZE_CHART[category][size]
-    efficiency = PATTERN_EFFICIENCY.get(garment_type, 0.70)
+
+    # A missing efficiency entry silently reshapes the yardage number, so the
+    # fallback has to be reported the same way the cost fallbacks are. Without
+    # this, an unsupported style quotes fabric as if it had been measured.
+    assumptions = []
+    if garment_type in PATTERN_EFFICIENCY:
+        efficiency = PATTERN_EFFICIENCY[garment_type]
+    else:
+        efficiency = 0.70
+        assumptions.append(
+            f"款式 '{garment_type}' 不在排料效率库中，按通用值 70% 估算"
+        )
 
     # Estimate pattern area (simplified: length × max(bust/hip/waist) × 2 for front+back)
     if category == "tops":
@@ -144,9 +157,11 @@ def calculate_fabric_consumption(garment_type: str, size: str, category: str, fa
         "t-shirt": 4,   # front, back, 2 sleeves
         "shirt": 8,     # front x2, back, collar, 2 sleeves, 2 cuffs
         "blouse": 7,
+        "crossover-blouse": 7,   # 大襟, 小襟, 后片, 袖x2, 领, 腰带
         "dress": 6,
         "skirt": 4,
         "pants": 6,     # front x2, back x2, waistband, pockets
+        "jeans": 7,     # front x2, back x2, waistband, pockets x2
         "jacket": 12,
         "coat": 14,
     }
@@ -157,6 +172,7 @@ def calculate_fabric_consumption(garment_type: str, size: str, category: str, fa
         "pattern_pieces": pieces.get(garment_type, 6),
         "efficiency_rate": efficiency,
         "total_area_cm2": int(total_area_cm2),
+        "assumptions": assumptions,
     }
 
 # ─── Cost Breakdown ─────────────────────────────────────────────────────────
@@ -176,9 +192,11 @@ NOTIONS_BASE_COST = {
     "t-shirt": 5,        # thread, labels
     "shirt": 15,         # buttons, thread, interfacing, labels
     "blouse": 12,
+    "crossover-blouse": 16,   # 系带/暗扣、滚边、腰带用料
     "dress": 20,         # zipper, thread, lining, labels
     "skirt": 15,
     "pants": 18,         # zipper, button, thread, labels
+    "jeans": 26,         # 铆钉、金属钮、拉链、双色线、皮标
     "jacket": 35,        # lining, zipper, buttons, shoulder pads
     "coat": 50,
 }
@@ -188,9 +206,11 @@ LABOR_HOURS = {
     "t-shirt": 2.5,
     "shirt": 4.0,
     "blouse": 3.5,
+    "crossover-blouse": 4.5,   # 交领对位、滚边、腰带
     "dress": 5.0,
     "skirt": 3.0,
     "pants": 4.5,
+    "jeans": 5.5,        # 双线明缝、打枣、铆钉
     "jacket": 8.0,
     "coat": 10.0,
 }
@@ -385,9 +405,13 @@ def format_markdown_output(spec: Dict[str, Any]) -> str:
 | **合计 Total** | **¥{cc['total_cost']:.2f}** | 单件出厂成本，不含利润与物流 / ex-works, excl. margin & freight |
 """
 
-    if cc['assumptions']:
+    # Yardage and cost each carry their own fallbacks. Rendering only the cost
+    # ones would drop a marker-efficiency guess from the deliverable while the
+    # yardage table still reads as measured.
+    all_assumptions = fc.get('assumptions', []) + cc['assumptions']
+    if all_assumptions:
         md += "\n### ⚠️ 估算假设 / Estimation assumptions\n\n"
-        for note in cc['assumptions']:
+        for note in all_assumptions:
             md += f"- {note}\n"
 
     md += """

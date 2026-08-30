@@ -55,7 +55,9 @@ def main() -> int:
         ("calculation", lambda: run_script(TESTS / "test_calculate_garment.py")),
         ("regressions", lambda: run_script(TESTS / "test_regressions.py")),
         ("pattern-drafting", lambda: run_script(TESTS / "test_pattern_drafting.py")),
+        ("pattern-geometry", lambda: run_script(TESTS / "test_pattern_geometry.py")),
         ("svg-text-overlap", lambda: run_script(TESTS / "test_no_text_overlap.py")),
+        ("examples-current", lambda: run_script(TESTS / "test_examples_current.py")),
     ]
     injected = os.environ.get("CLOTHES_VALIDATION_FAIL_GATE", "")
     failures = 0

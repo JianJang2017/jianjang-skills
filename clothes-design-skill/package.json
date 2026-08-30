@@ -1,7 +1,7 @@
 {
   "name": "clothes-design-skill",
-  "version": "1.0.0",
-  "description": "Garment design skill: generate design drafts (sample renders + pattern piece layouts) from size/style specs, or reverse-clone them from a reference photo. Outputs size charts, fabric consumption, and cost breakdowns.",
+  "version": "2.3.0",
+  "description": "Garment design and pattern-maker handoff skill with validated SVG pattern references.",
   "type": "module",
   "private": true,
   "engines": {

@@ -3,6 +3,8 @@
 
 import json
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -79,6 +81,30 @@ class IndustrialContractTest(unittest.TestCase):
         self.assertIn("只允许覆盖商业估算", cost)
         self.assertIn("状态评价用户请求的完整目标", contract)
         self.assertIn("默认值或市场均价时不得标记 `PASS`", contract)
+
+    def test_removed_local_export_and_image_backends_stay_removed(self):
+        removed = (
+            ROOT / "scripts" / "pattern_pdf.py",
+            ROOT / "scripts" / "generate-image.js",
+            ROOT / "scripts" / "qwen-image-generator.js",
+            ROOT / "scripts" / "bl-image-generator.js",
+            ROOT / "models.json",
+        )
+        self.assertEqual([path.name for path in removed if path.exists()], [])
+
+    def test_draw_pattern_surface_is_svg_only(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "draw_pattern.py"), "--help"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--output", result.stdout)
+        self.assertNotIn("--pdf", result.stdout)
+
+    def test_entry_docs_do_not_offer_pdf_delivery(self):
+        combined = SKILL + "\n" + README + "\n" + CONTRACT.read_text(encoding="utf-8")
+        for phrase in ("1:1 PDF", "A4 PDF", "--pdf", "pattern_pdf"):
+            self.assertNotIn(phrase, combined)
 
 
 if __name__ == "__main__":

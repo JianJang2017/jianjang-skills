@@ -16,9 +16,8 @@
  *   - --archive 自动归档到 ../prompts/YYYYMMDD-NN.md（标记 source: reverse）
  *
  * 设计目标：
- *   反推出来的 prompt 直接能喂回 generate-image.js，所以输出格式保持和
- *   prompts/ 下归档文件一致 —— 这样 reverse → (optional optimize) → generate
- *   是一条顺滑的流水线。
+ *   输出结构化 prompt，并保持与 prompts/ 归档格式一致，便于后续人工编辑
+ *   或交给执行环境的图像生成工具。
  */
 
 import { spawn } from 'node:child_process';
@@ -107,7 +106,7 @@ Options:
 
 输出格式：
   反推出来的 prompt 默认按 [Style] + [Type] + [Content] + [Key elements]
-  结构组织，可直接喂回 generate-image.js / optimize-prompt.js。
+  结构组织，可供人工编辑或交给执行环境的图像生成工具。
 
 Examples:
   # 看图说话，结果打到 stdout（默认忽略 UI）
