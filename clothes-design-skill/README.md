@@ -4,16 +4,16 @@
 
 - 用于外观确认的效果图；
 - 由确定性代码生成的 1:N 裁片技术示意；
-- `crossover-blouse` 单尺码 1:1 A4 白坯样板 PDF；
+- 同源裁片拼装 SVG；
 - 基准尺码与测量点；
 - 面料用量和成本估算；
 - 校验摘要、假设、风险和待确认项。
 
 ## 工业定位
 
-本技能达到的目标是：让专业打版师能够核对设计意图和尺寸依据；交领上衣还可直接打印制作白坯样衣。
+本技能达到的目标是：让专业打版师能够核对设计意图、尺寸依据和裁片关系；完整 SVG 可无损放大审图。
 
-裁片 SVG **不可直接裁剪**。1:1 PDF 仅供白坯试样，不能替代试穿修版、面料缩率处理、DXF/PLT、工业放码、真实排料、完整工艺单、生产 BOM、公差表或批量质检。用量和成本属于前期估算，正式采购或报价前必须用生产纸样、排料和供应商报价复核。
+裁片 SVG **不可直接裁剪**，不能替代试穿修版、面料缩率处理、DXF/PLT、工业放码、真实排料、完整工艺单、生产 BOM、公差表或批量质检。用量和成本属于前期估算，正式采购或报价前必须用生产纸样、排料和供应商报价复核。
 
 ## 支持范围
 
@@ -45,8 +45,7 @@ python3 scripts/draw_pattern.py \
 python3 scripts/draw_pattern.py \
   --type crossover-blouse --size M --fit regular \
   --fabric-width 110 \
-  --output /tmp/crossover-reference.svg \
-  --pdf /tmp/crossover-muslin-a4.pdf
+  --output /tmp/crossover-reference.svg
 
 python3 scripts/calculate_garment.py \
   --type t-shirt --category tops --fabric cotton \
@@ -54,7 +53,7 @@ python3 scripts/calculate_garment.py \
   --output /tmp/t-shirt-spec.md
 ```
 
-效果图和图片逆向分析额外需要 Node.js 18+ 及可用的图像后端；它们失败时不影响确定性技术资料的验证，但交付状态必须披露降级。
+效果图使用执行环境内置图像生成能力；图片逆向分析需要 Node.js 18+ 及可用的视觉分析后端。失败时不影响确定性技术资料的验证，但交付状态必须披露降级。
 
 ## 交付状态
 

@@ -183,6 +183,63 @@ class AssemblyGuideTests(unittest.TestCase):
         )
         self.assertIn("Canonical geometry", svg)
 
+    def test_assembly_labels_have_explicit_non_overlapping_boxes(self):
+        pieces = draft_crossover_blouse(SIZE_CHART["tops"]["M"], fit="regular")
+        root = ET.fromstring(render_assembly(pieces, size="M"))
+        labels = root.findall(".//{http://www.w3.org/2000/svg}text[@data-piece-label]")
+        self.assertEqual(len(labels), len(pieces))
+        rows = {}
+        for node in labels:
+            rows.setdefault(float(node.attrib["data-box-y"]), []).append(
+                (float(node.attrib["data-box-x"]),
+                 float(node.attrib["data-box-x"]) + float(node.attrib["data-box-width"]))
+            )
+        for boxes in rows.values():
+            boxes.sort()
+            for (_, right), (left, _) in zip(boxes, boxes[1:]):
+                self.assertLessEqual(right, left)
+        self.assertTrue(all("transform" not in node.attrib for node in labels))
+
+    def test_each_assembly_piece_has_an_isolated_label_card(self):
+        pieces = draft_crossover_blouse(SIZE_CHART["tops"]["M"], fit="regular")
+        root = ET.fromstring(render_assembly(pieces, size="M"))
+        ns = "{http://www.w3.org/2000/svg}"
+        cards = root.findall(f".//{ns}g[@data-piece-card]")
+        self.assertEqual(len(cards), len(pieces))
+        boxes = []
+        for card in cards:
+            x = float(card.attrib["data-card-x"])
+            y = float(card.attrib["data-card-y"])
+            w = float(card.attrib["data-card-width"])
+            h = float(card.attrib["data-card-height"])
+            boxes.append((x, y, x + w, y + h))
+            labels = card.findall(f"{ns}text[@data-piece-label]")
+            self.assertEqual(len(labels), 1)
+            self.assertEqual(len(labels[0].findall(f"{ns}tspan")), 2)
+            self.assertLessEqual(float(labels[0].attrib["data-max-width"]), w - 24)
+        for index, a in enumerate(boxes):
+            for b in boxes[index + 1:]:
+                separated = a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]
+                self.assertTrue(separated, (a, b))
+
+    def test_assembly_copy_does_not_refer_to_removed_pdf_workflow(self):
+        pieces = draft_crossover_blouse(SIZE_CHART["tops"]["M"], fit="regular")
+        svg = render_assembly(pieces, size="M")
+        self.assertNotIn("PDF", svg)
+        self.assertNotIn("tiled", svg.lower())
+        self.assertIn("not a cutting pattern", svg.lower())
+
+    def test_assembly_title_is_bilingual(self):
+        pieces = draft_crossover_blouse(SIZE_CHART["tops"]["M"], fit="regular")
+        root = ET.fromstring(render_assembly(pieces, size="M"))
+        ns = "{http://www.w3.org/2000/svg}"
+        title = root.find(f"{ns}text[@data-document-title]")
+        self.assertIsNotNone(title)
+        copy = "".join(title.itertext())
+        self.assertIn("交领上衣裁片拼装示意", copy)
+        self.assertIn("Crossover Blouse Assembly Guide", copy)
+        self.assertIn("M码 / Size M", copy)
+
     def test_technical_svg_uses_measurable_cut_outline(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "pattern.svg"

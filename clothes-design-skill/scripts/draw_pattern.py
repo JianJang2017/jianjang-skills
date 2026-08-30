@@ -8,7 +8,8 @@ A vector drawing gives crisp text at any zoom and — because the geometry and
 the annotations come from the same computation —
 cannot disagree with itself.
 
-This SVG is a scaled technical reference. Use ``--pdf`` for physical 1:1 output.
+The SVG is a complete single-canvas vector reference that can be enlarged
+without loss. It remains a scaled technical reference, not a cutting pattern.
 
 Output conventions follow garment-industry drafting practice:
   solid outline     净样线 (net/sewing line)
@@ -655,13 +656,10 @@ def main():
     ap.add_argument("--fabric-width", type=int, default=140)
     ap.add_argument("--scale-label", default="1:10",
                     help="Scale annotation printed in the title block")
-    ap.add_argument("--output", "-o", help="Output scaled-reference .svg path")
-    ap.add_argument("--pdf", help="Output tiled A4 1:1 sample-pattern PDF")
+    ap.add_argument("--output", "-o", required=True,
+                    help="Output scaled-reference .svg path")
     ap.add_argument("--title", help="Override the garment title")
     args = ap.parse_args()
-    if not args.output and not args.pdf:
-        ap.error("at least one of --output or --pdf is required")
-
     category, drafter = DRAFTERS[args.type]
     measurements = SIZE_CHART[category][args.size]
     pieces = drafter(measurements, fit=args.fit)
@@ -685,26 +683,14 @@ def main():
             print(f"   - {p}", file=sys.stderr)
         return 1
 
-    if args.output:
-        title = args.title or args.type
-        svg = render(title, category, args.size, pieces,
-                     args.scale_label, args.fit, args.fabric_width)
-        out = Path(args.output)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(svg, encoding="utf-8")
-        print(f"✅ {out}  ({len(pieces)} 种裁片 / 共 {sum(p.qty for p in pieces)} 片, "
-              f"{len(svg)//1024}KB)", file=sys.stderr)
-
-    if args.pdf:
-        from pattern_pdf import write_tiled_pdf
-        pdf = Path(args.pdf)
-        try:
-            manifest = write_tiled_pdf(pieces, pdf, size=args.size)
-        except ValueError as exc:
-            print(f"❌ 1:1 样板验证失败，拒绝输出 PDF：{exc}", file=sys.stderr)
-            return 1
-        print(f"✅ {pdf}  (1:1 A4, {manifest.page_count} pages, "
-              f"10mm overlap, 50mm calibration)", file=sys.stderr)
+    title = args.title or args.type
+    svg = render(title, category, args.size, pieces,
+                 args.scale_label, args.fit, args.fabric_width)
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(svg, encoding="utf-8")
+    print(f"✅ {out}  ({len(pieces)} 种裁片 / 共 {sum(p.qty for p in pieces)} 片, "
+          f"{len(svg)//1024}KB)", file=sys.stderr)
     for p in pieces:
         nw, nh = p.net_size()
         print(f"   {p.name:<6} ×{p.qty}  净样 {nw}×{nh}cm  "

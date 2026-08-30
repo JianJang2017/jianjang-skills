@@ -1,8 +1,8 @@
-# T-Shirt 设计规格书 / Spec Sheet
+# Crossover-Blouse 设计规格书 / Spec Sheet
 
 ## 基本信息 / Overview
-- **款式类型 Garment**: t-shirt
-- **面料 Fabric**: cotton
+- **款式类型 Garment**: crossover-blouse
+- **面料 Fabric**: linen
 - **类别 Category**: tops
 - **参考尺码 Reference size**: M（用量与成本以此码计算 / yardage & cost quoted for this size）
 
@@ -10,13 +10,7 @@
 
 | 尺码<br>Size | 胸围<br>Bust | 腰围<br>Waist | 臀围<br>Hip | 肩宽<br>Shoulder | 袖长<br>Sleeve length | 衣长<br>Body length |
 |------|---|---|---|---|---|---|
-| **XS** | 80 | 62 | 86 | 36 | 58 | 60 |
-| **S** | 84 | 66 | 90 | 37 | 59 | 62 |
 | **M** ←参考 | 88 | 70 | 94 | 38 | 60 | 64 |
-| **L** | 92 | 74 | 98 | 39 | 61 | 66 |
-| **XL** | 96 | 78 | 102 | 40 | 62 | 68 |
-| **XXL** | 100 | 82 | 106 | 41 | 63 | 70 |
-| **XXXL** | 104 | 86 | 110 | 42 | 64 | 72 |
 
 **测量点说明 / Measurement points:**
 
@@ -31,21 +25,21 @@
 
 | 项目 / Item | 数值 / Value |
 |------|------|
-| 总用量 Total length | 2.55 米 / m |
-| 面料幅宽 Fabric width | 140 cm |
-| 裁片数量 Pattern pieces | 4 片 / pcs |
-| 排料效率 Marker efficiency | 75% |
-| 总面积 Total area | 35745 cm² |
+| 总用量 Total length | 3.69 米 / m |
+| 面料幅宽 Fabric width | 110 cm |
+| 裁片数量 Pattern pieces | 7 片 / pcs |
+| 排料效率 Marker efficiency | 66% |
+| 总面积 Total area | 40619 cm² |
 
 ## 成本核算 / Cost breakdown（参考 M 码 / for size M）
 
 | 项目 / Item | 金额 / Amount (CNY) | 说明 / Basis |
 |------|-----------|------|
-| 面料 Fabric | ¥63.75 | ¥25/米 × 2.55 米 |
-| 辅料 Notions | ¥5.00 | 拉链/纽扣/织唛/吊牌 zipper, buttons, labels |
-| 人工 Labour | ¥75.00 | 2.5 小时 h × ¥30/小时 h |
-| 管理费 Overhead | ¥21.56 | 直接成本的 15% / 15% of direct cost |
-| **合计 Total** | **¥165.31** | 单件出厂成本，不含利润与物流 / ex-works, excl. margin & freight |
+| 面料 Fabric | ¥147.60 | ¥40/米 × 3.69 米 |
+| 辅料 Notions | ¥16.00 | 拉链/纽扣/织唛/吊牌 zipper, buttons, labels |
+| 人工 Labour | ¥135.00 | 4.5 小时 h × ¥30/小时 h |
+| 管理费 Overhead | ¥44.79 | 直接成本的 15% / 15% of direct cost |
+| **合计 Total** | **¥343.39** | 单件出厂成本，不含利润与物流 / ex-works, excl. margin & freight |
 
 > 用量基于标准版型和排料效率估算，实际采购前建议让打版师核一次排料。
 > 成本按市场均价计算，受批量、地域、工艺影响，详见 `references/cost-model.md`。

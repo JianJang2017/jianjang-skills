@@ -1,12 +1,12 @@
 ---
 name: clothes-design-skill
-description: Use when a user needs garment concept design, pattern-making reference, size specifications, fabric consumption or cost estimates, a validated 1:1 crossover-blouse muslin PDF, or garment-photo analysis for a pattern-maker handoff. Not for production-ready patterns, DXF/PLT, grading, markers, or bulk cutting.
-version: 2.1.0
+description: Use when a user needs garment concept design, zoomable SVG pattern references, size specifications, fabric consumption or cost estimates, or garment-photo analysis for a pattern-maker handoff. Not for production-ready patterns, DXF/PLT, grading, markers, or bulk cutting.
+version: 2.3.0
 ---
 
 # Clothes Design Skill
 
-生成供专业打版师复核的技术资料包。效果图用于视觉确认；裁片 SVG 是 1:N 技术示意，**不可直接裁剪、采购签约或投产**。`crossover-blouse` 可额外生成经过比例、拓扑、缝份和缝合关系校验的 1:1 A4 分页 PDF，仅用于制作白坯样衣。
+生成供专业打版师复核的技术资料包。效果图仅用于视觉确认；裁片 SVG 是可无损放大的 1:N 技术示意，**不可直接裁剪、采购签约或投产**。
 
 ## 开始前
 
@@ -19,6 +19,7 @@ version: 2.1.0
 - 解释用量、价格或费率：[references/cost-model.md](references/cost-model.md)
 - 生成效果图：[references/prompt-framework.md](references/prompt-framework.md)
 - 核对款式裁片构成：[references/garment-library.md](references/garment-library.md)
+- 输出纸样标记：[references/pattern-notation-standard.md](references/pattern-notation-standard.md)
 
 ## 模式
 
@@ -41,7 +42,7 @@ node scripts/reverse-prompt.js -i /absolute/path/garment.jpg --lang zh --archive
 
 1. 形成设计简报并完成输入预检。
 2. 检查款式是否受裁片引擎支持。
-3. 效果图仅用于外观确认，可按 prompt framework 生成；生图失败不允许伪造成功。
+3. 效果图仅用于外观确认，按 prompt framework 使用执行环境内置图像生成能力；工具不可用时披露降级，不得伪造成功。
 4. 裁片图必须由代码生成，不得用扩散模型生成带尺寸的技术图：
 
 ```bash
@@ -64,17 +65,15 @@ python3 scripts/calculate_garment.py \
 
 用量和成本只对应输出所标识的参考尺码。任何 `assumptions` 都必须原样进入交付物，并使状态至少为 `CONDITIONAL`。无效尺码、几何校验失败或关键输入缺失必须停止，状态为 `BLOCKED`。
 
-6. 用户需要交领上衣白坯样板时，生成单尺码 1:1 PDF；不要用 SVG 打印替代：
+6. 用户需要交领上衣拼装关系时，从相同裁片几何生成拼装 SVG：
 
 ```bash
-python3 scripts/draw_pattern.py \
+python3 scripts/pattern_assembly.py \
   --type crossover-blouse --size M --fit regular \
-  --fabric-width 110 \
-  --output /tmp/crossover-reference.svg \
-  --pdf /tmp/crossover-muslin-a4.pdf
+  --output /tmp/crossover-assembly.svg
 ```
 
-PDF 必须先量取每页 `50 × 50mm` 校准框，并按“实际大小 / 100%”打印，禁止适合页面。当前只有 `crossover-blouse` 定义了逐边缝份与对位刀口；其他款式的 `--pdf` 校验会拒绝输出。
+拼装图与裁片技术图必须使用相同 `Piece.path`，不得另画相似轮廓。它只解释裁片身份和连接关系，不是裁剪纸样。
 
 7. 按合同组装打版师复核包，运行交付门禁：
 
@@ -88,13 +87,13 @@ python3 scripts/validate_skill.py
 - `CONDITIONAL`：可供打版师复核，但包含已披露的估算、默认值或非关键降级。
 - `BLOCKED`：关键输入缺失、款式不受支持或校验失败；不得包装成完整规格书。
 
-最终答复开头必须显示一个状态，并在结尾明确：1:1 PDF 只可制作白坯；由专业打版师试穿修版、复核面料缩率和工艺后，才能进入面料采购、裁剪与生产。
+最终答复开头必须显示一个状态，并在结尾明确：SVG 只供打版复核；由专业打版师制作白坯、试穿修版并复核面料缩率和工艺后，才能进入采购、裁剪与生产。
 
 ## 不可突破的边界
 
 - 不把效果图当作结构证据。
 - 不把 1:N SVG 描述为 1:1 纸样，即使 SVG 可无损缩放。
-- 不把白坯样衣 PDF 描述为生产纸样、放码文件或排料图。
+- 不把 SVG 技术示意描述为生产纸样、放码文件或排料图。
 - 不用估算用量直接下采购单，不用估算成本直接签报价合同。
 - 不声称支持 DXF/PLT、工业放码、真实排料、完整工艺单、生产 BOM、公差表或批量质检。
 - 不手工修饰失败输出；修正输入或代码后重新运行校验。

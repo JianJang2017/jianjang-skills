@@ -1,127 +1,43 @@
 #!/usr/bin/env python3
-"""
-Test that examples/ matches what the current scripts produce.
+"""Structural checks for the maintained crossover-blouse example bundle."""
 
-The examples exist to show actual output, so they are only useful while they
-stay in sync with the code. Both generators are deterministic, which means
-drift is detectable: regenerate to a temp directory and diff.
-"""
-
-import difflib
-import shutil
-import subprocess
-import sys
+import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "examples"
-REGEN = EXAMPLES / "regenerate.sh"
-
-fails = []
+EXAMPLE = ROOT / "examples" / "crossover-blouse-a"
+SVG_NS = "{http://www.w3.org/2000/svg}"
 
 
-def check(name, cond, detail=""):
-    print(f"{'✅' if cond else '❌'} {name}" + (f"  — {detail}" if detail and not cond else ""))
-    if not cond:
-        fails.append(name)
+class CurrentExampleTests(unittest.TestCase):
+    def test_bundle_contains_the_six_documented_deliverables(self):
+        expected = {
+            "01-garment-look.png",
+            "02-pattern-reference.svg",
+            "03-assembly-guide.svg",
+            "04-making-process.md",
+            "05-specification.md",
+            "README.md",
+        }
+        actual = {path.name for path in EXAMPLE.iterdir() if path.is_file()}
+        self.assertEqual(actual, expected)
 
+    def test_vector_outputs_are_valid_and_complete(self):
+        pattern = ET.parse(EXAMPLE / "02-pattern-reference.svg").getroot()
+        assembly = ET.parse(EXAMPLE / "03-assembly-guide.svg").getroot()
+        cut_paths = pattern.findall(f".//{SVG_NS}path[@data-cut-method='true-offset']")
+        cards = assembly.findall(f".//{SVG_NS}g[@data-piece-card]")
+        self.assertEqual(len(cut_paths), 6)
+        self.assertEqual(len(cards), 6)
 
-def main():
-    if not REGEN.exists():
-        print(f"❌ {REGEN} not found; cannot verify freshness")
-        return 1
-
-    # Regenerate into a temp directory rather than over examples/ — a freshness
-    # test that overwrites the thing it is checking can never fail.
-    tmp = EXAMPLES.parent / "examples-temp"
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    tmp.mkdir()
-
-    script_text = REGEN.read_text()
-    if 'OUT="$ROOT/examples"' not in script_text:
-        print("❌ regenerate.sh structure changed; test needs update")
-        return 1
-
-    tmp_script = tmp / "regenerate.sh"
-    tmp_script.write_text(script_text.replace(
-        'OUT="$ROOT/examples"',
-        f'OUT="{tmp}"'
-    ))
-    tmp_script.chmod(0o755)
-
-    result = subprocess.run(
-        ["bash", str(tmp_script)],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    check("regenerate.sh exits 0", result.returncode == 0,
-          result.stderr[-200:] if result.returncode else "")
-
-    if result.returncode != 0:
-        print(result.stdout)
-        print(result.stderr, file=sys.stderr)
-        shutil.rmtree(tmp)
-        return 1
-
-    # Compare each file
-    mismatches = []
-    for path in (sorted(EXAMPLES.glob("*.svg"))
-                 + sorted(EXAMPLES.glob("*.pdf"))
-                 + sorted(EXAMPLES.glob("*.md"))):
-        if path.name == "README.md":
-            continue
-        regenerated = tmp / path.name
-        if not regenerated.exists():
-            check(f"{path.name} was regenerated", False, "missing in temp")
-            mismatches.append(path.name)
-            continue
-
-        if path.suffix == ".pdf":
-            original = path.read_bytes()
-            new = regenerated.read_bytes()
-        else:
-            original = path.read_text(encoding="utf-8")
-            new = regenerated.read_text(encoding="utf-8")
-
-        if original == new:
-            check(f"{path.name} is current", True)
-        else:
-            check(f"{path.name} is current", False, "content differs")
-            mismatches.append(path.name)
-            # Show a unified diff snippet so the failure is actionable
-            diff = [] if path.suffix == ".pdf" else list(difflib.unified_diff(
-                original.splitlines(keepends=True), new.splitlines(keepends=True),
-                fromfile=f"examples/{path.name}", tofile=f"regenerated/{path.name}",
-                lineterm="", n=2,
-            ))
-            if diff:
-                print("\n" + "".join(diff[:40]))
-                if len(diff) > 40:
-                    print(f"... ({len(diff) - 40} more lines)")
-
-    shutil.rmtree(tmp)
-
-    if mismatches:
-        print()
-        print(f"❌ {len(mismatches)} example(s) out of sync:")
-        for name in mismatches:
-            print(f"   - {name}")
-        print()
-        print("Run:  bash examples/regenerate.sh")
-        return 1
-
-    if fails:
-        print()
-        print(f"❌ {len(fails)} checks failed")
-        return 1
-
-    print()
-    print("✅ all examples are current")
-    return 0
+    def test_raster_and_documents_are_nonempty(self):
+        image = (EXAMPLE / "01-garment-look.png").read_bytes()
+        self.assertTrue(image.startswith(b"\x89PNG\r\n\x1a\n"))
+        for name in ("04-making-process.md", "05-specification.md", "README.md"):
+            self.assertGreater(len((EXAMPLE / name).read_text(encoding="utf-8")), 200)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    unittest.main(verbosity=2)

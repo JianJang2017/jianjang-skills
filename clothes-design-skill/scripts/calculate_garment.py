@@ -55,7 +55,7 @@ SIZE_CHART = {
 SIZE_ORDER = ("XS", "S", "M", "L", "XL", "XXL", "XXXL")
 
 # Measurement-point labels. A spec sheet gets read by a domestic pattern maker
-# and by an overseas factory off the same PDF, so each column carries both the
+# and by an overseas factory from the same specification, so each column carries both the
 # Chinese term and the English one. Bare keys like "inseam" or "hem" are the
 # ambiguous ones — "hem" can mean hem width or hem allowance, and 下摆围 vs
 # 脚口 differ by garment, so the pairing removes the guesswork.
