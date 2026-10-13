@@ -1,0 +1,14 @@
+{
+  "poet": "李白",
+  "workflow_type": "famous_verses",
+  "workflow_id": "20261012-001",
+  "created_at": "2026-10-12T14:30:00Z",
+  "stages": {
+    "writing": {"status": "completed", "output": "李白名句整理_中文版.md"},
+    "illustration": {"status": "completed", "provider": "codex", "images": ["00-cover-final.jpg", "01-waterfall.jpg", "02-boat.jpg"]},
+    "html_conversion": {"status": "completed", "output": "html/preview.html, html/publish.html"},
+    "publishing": {"status": "completed", "media_id": "-3wWWuuoxzSDJcbSkxI-PvbACGi1UPrpYdXFOq39Bpw-FG9h8DYM_YOskT7U5ty4"}
+  },
+  "next_action": "在公众号后台预览草稿，确认后正式发布",
+  "last_error": null
+}

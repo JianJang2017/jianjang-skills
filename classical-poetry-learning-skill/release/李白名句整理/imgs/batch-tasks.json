@@ -1,0 +1,17 @@
+[
+  {
+    "prompt-file": "../imgs/prompts/00-cover.md",
+    "output": "../imgs/00-cover-bg.png",
+    "aspect-ratio": "2.35:1"
+  },
+  {
+    "prompt-file": "../imgs/prompts/01-waterfall.md",
+    "output": "../imgs/01-waterfall.png",
+    "aspect-ratio": "16:9"
+  },
+  {
+    "prompt-file": "../imgs/prompts/02-boat.md",
+    "output": "../imgs/02-boat.png",
+    "aspect-ratio": "16:9"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "poet": "杜甫",
+  "workflow_type": "famous_verses",
+  "workflow_id": "20261013-001",
+  "created_at": "2026-10-13T10:35:00Z",
+  "stages": {
+    "writing": {"status": "completed", "output": "杜甫名句整理_中文版.md"},
+    "illustration": {"status": "completed", "provider": "codex", "images": ["00-cover-final.jpg", "01-spring-view.jpg", "02-climbing-high.jpg"]},
+    "html_conversion": {"status": "completed", "output": "html/preview.html, html/publish.html"},
+    "publishing": {"status": "completed", "media_id": "-3wWWuuoxzSDJcbSkxI-Pt_hXtorfw27EyAY7agCcrsJNvLF2dMy88AwHaH1-DoW"}
+  },
+  "next_action": "在公众号后台预览草稿，确认后正式发布",
+  "last_error": null
+}

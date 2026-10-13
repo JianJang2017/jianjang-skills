@@ -1,0 +1,21 @@
+{
+  "poet": "李白",
+  "courtesy_name": "太白",
+  "pen_name": "青莲居士",
+  "dynasty": "唐",
+  "period": "盛唐",
+  "birth_year": 701,
+  "death_year": 762,
+  "age": "约61岁",
+  "title": "诗仙",
+  "parallel": "与杜甫并称'李杜'",
+  "style": "豪放飘逸、想象奇特、语言清新自然",
+  "famous_verses_count": 12,
+  "birthplace": "碎叶城（今吉尔吉斯斯坦境内）或四川江油（存在争议）",
+  "verification": {
+    "status": "verified",
+    "sources": ["部编版语文教材", "《旧唐书》", "《新唐书》"],
+    "checked_at": "2026-10-12",
+    "notes": "出生地存在碎叶城和江油两说，采用主流学术观点标注争议"
+  }
+}

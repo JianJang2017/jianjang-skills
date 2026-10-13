@@ -1,0 +1,21 @@
+{
+  "poet": "杜甫",
+  "courtesy_name": "子美",
+  "pen_name": "少陵野老",
+  "dynasty": "唐",
+  "period": "盛唐转衰",
+  "birth_year": 712,
+  "death_year": 770,
+  "age": "58岁",
+  "title": "诗圣",
+  "parallel": "与李白并称'李杜'",
+  "style": "沉郁顿挫、忧国忧民、格律严谨",
+  "famous_verses_count": 12,
+  "birthplace": "河南巩县（今巩义市）",
+  "verification": {
+    "status": "verified",
+    "sources": ["部编版语文教材", "《旧唐书》", "《新唐书》", "《杜工部集》"],
+    "checked_at": "2026-10-13",
+    "notes": "部分诗作创作年份有争议，采用主流学术观点"
+  }
+}
