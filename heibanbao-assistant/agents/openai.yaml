@@ -1,0 +1,4 @@
+interface:
+  display_name: "黑板报助手"
+  short_description: "生成可誊写的 Markdown 排版稿与黑板效果图"
+  default_prompt: "使用 $heibanbao-assistant 为主题制作一套黑板报，交付 Markdown 排版稿和实际效果图。"
